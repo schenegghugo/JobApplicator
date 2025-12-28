@@ -1,0 +1,34 @@
+teamtailor:
+  - https://career.paradoxplaza.com/jobs
+  - https://careers.avalanchestudios.com/jobs
+  - https://career.embark-studios.com/jobs
+  - https://jobs.fatsharkgames.com/jobs
+  - https://jobs.machinegames.com/jobs
+  - https://jobs.stunlock.com/jobs
+  - https://jobs.frictionalgames.com/jobs
+  - https://jobs.coffeestain.se/jobs
+  - https://jobs.tarsier.se/jobs
+  - https://jobs.starbreeze.com/jobs
+  - https://jobs.arrowheadgamestudios.com/jobs
+  - https://career.snowprintstudios.com/jobs
+  - https://jobs.neongiant.se/jobs
+  - https://jobs.mightanddelight.com/jobs
+  - https://career.goodbyekansas.com/jobs
+  - https://career.edisen.com/jobs
+
+custom:
+  # Add custom parsers later for these
+  # - https://www.ea.com/careers
+  # - https://careers.king.com/
+
+roles:
+  include:
+    - Engineer
+    - Developer
+    - Programmer
+    - Technical Artist
+  soft_exclude:
+    - Manager
+    - Director
+    - Lead
+    - Intern

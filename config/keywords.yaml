@@ -1,0 +1,19 @@
+skills:
+  graphics:
+    - Vulkan
+    - OpenGL
+    - DirectX
+    - HLSL
+    - GLSL
+    - Rendering
+    - Shaders
+  engine:
+    - Unreal
+    - Unity
+    - Godot
+    - C++
+  general:
+    - Python
+    - Git
+    - CI/CD
+    - Docker

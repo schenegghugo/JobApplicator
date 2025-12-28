@@ -1,0 +1,138 @@
+[
+  {
+    "company": "EA DICE",
+    "careers_url": "https://www.ea.com/careers",
+    "keywords": ["Game Engine", "Graphics", "Rendering", "Frostbite", "Tools", "Technical Art"]
+  },
+  {
+    "company": "Paradox Interactive",
+    "careers_url": "https://career.paradoxplaza.com/",
+    "keywords": ["Game Development", "Engine", "Tools", "Technical Artist"]
+  },
+  {
+    "company": "Avalanche Studios Group",
+    "careers_url": "https://avalanchestudios.com/jobs",
+    "keywords": ["Game Engine", "Open World", "Rendering", "Graphics", "Tools"]
+  },
+  {
+    "company": "Mojang Studios",
+    "careers_url": "https://www.minecraft.net/en-us/jobs",
+    "keywords": ["Game Engine", "Rendering", "Graphics", "Tools"]
+  },
+  {
+    "company": "King",
+    "careers_url": "https://careers.king.com/",
+    "keywords": ["Game Development", "Tools", "Rendering", "Technical Art"]
+  },
+  {
+    "company": "Embark Studios",
+    "careers_url": "https://www.embark-studios.com/careers",
+    "keywords": ["Rendering", "Real-time", "Graphics", "Engine", "Tools", "VFX"]
+  },
+  {
+    "company": "Fatshark",
+    "careers_url": "https://www.fatshark.se/careers",
+    "keywords": ["Game Engine", "Rendering", "Technical Art", "Graphics"]
+  },
+  {
+    "company": "MachineGames",
+    "careers_url": "https://www.machinegames.com/careers/",
+    "keywords": ["Game Engine", "Rendering", "Graphics", "Tools"]
+  },
+  {
+    "company": "Stunlock Studios",
+    "careers_url": "https://www.stunlock.com/careers",
+    "keywords": ["Game Development", "Rendering", "Graphics", "Technical Artist"]
+  },
+  {
+    "company": "Frictional Games",
+    "careers_url": "https://frictionalgames.com/jobs/",
+    "keywords": ["Game Engine", "Rendering", "Graphics", "Technical Art"]
+  },
+  {
+    "company": "Coffee Stain Studios",
+    "careers_url": "https://www.coffeestainstudios.com/jobs/",
+    "keywords": ["Game Development", "Engine", "Tools", "Rendering"]
+  },
+  {
+    "company": "Tarsier Studios",
+    "careers_url": "https://www.tarsier.se/jobs",
+    "keywords": ["Game Development", "Rendering", "Graphics", "Technical Artist"]
+  },
+  {
+    "company": "Overkill Software (Starbreeze)",
+    "careers_url": "https://www.starbreeze.com/jobs/",
+    "keywords": ["Game Engine", "Rendering", "VFX", "Tools"]
+  },
+  {
+    "company": "Arrowhead Game Studios",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Arrowhead%20Game%20Studios",
+    "keywords": ["Game Development", "VFX", "Rendering", "Technical Artist"]
+  },
+  {
+    "company": "Snowprint Studios",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Snowprint%20Studios",
+    "keywords": ["VFX", "Unity", "Real-time Effects", "Graphics"] 
+  },
+  {
+    "company": "Neon Giant",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Neon%20Giant",
+    "keywords": ["Game Development", "Rendering", "Engine", "Graphics"]
+  },
+  {
+    "company": "Might and Delight",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Might%20and%20Delight",
+    "keywords": ["Game Development", "Graphics", "Tools"]
+  },
+  {
+    "company": "Important Looking Pirates",
+    "careers_url": "https://www.linkedin.com/company/important-looking-pirates-vfx",
+    "keywords": ["VFX", "CGI", "Compositing", "Animation", "Pipeline"]
+  },
+  {
+    "company": "Goodbye Kansas Studios",
+    "careers_url": "https://www.linkedin.com/company/goodbye-kansas-studios",
+    "keywords": ["VFX", "Animation", "Cinematics", "Real-time", "Pipeline"] 
+  },
+  {
+    "company": "Filmgate",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Filmgate",
+    "keywords": ["VFX", "Post-Production", "CGI"]
+  },
+  {
+    "company": "Nordisk Film ShortCut",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Nordisk%20Film%20ShortCut",
+    "keywords": ["VFX", "Post-Production"]
+  },
+  {
+    "company": "Chimney Group",
+    "careers_url": "https://chimneygroup.com/careers/",
+    "keywords": ["VFX", "Animation", "CGI", "Technical Director"]
+  },
+  {
+    "company": "B-Reel Films",
+    "careers_url": "https://b-reel.com/careers/",
+    "keywords": ["CGI", "VFX", "Motion Graphics", "3D"]
+  },
+  {
+    "company": "Swiss VFX",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Swiss%20VFX",
+    "keywords": ["VFX", "CGI"]
+  },
+  {
+    "company": "FABLEfx",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=FABLEfx",
+    "keywords": ["VFX", "CGI"]
+  },
+  {
+    "company": "Milford",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Milford",
+    "keywords": ["VFX", "Animation", "CGI"]
+  },
+  {
+    "company": "Acecat",
+    "careers_url": "https://www.linkedin.com/jobs/search/?keywords=Acecat",
+    "keywords": ["VFX", "CGI"]
+  }
+]
+
