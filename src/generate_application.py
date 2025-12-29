@@ -14,10 +14,13 @@ DB_PATH = "data/db/jobs.db"
 TEMPLATE_DIR = "data/templates"
 OUTPUT_DIR = "data/applications"
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3"
+MODEL_NAME = "llama3.2"
+
+# Timeout in seconds (300s = 5 minutes)
+TIMEOUT_SECONDS = 900 
 
 # -----------------------------------------------------------------------------
-# CANDIDATE PROFILE (The Ground Truth)
+# CANDIDATE PROFILE
 # -----------------------------------------------------------------------------
 
 CANDIDATE_PROFILE = """
@@ -71,32 +74,40 @@ def get_template(name):
         return f.read()
 
 def call_ollama(prompt, context=None):
-    """Sends a request to the local AI model."""
+    """
+    Sends a request to the local AI model with a strict timeout.
+    """
     data = {
         "model": MODEL_NAME,
         "prompt": prompt,
         "stream": False,
         "context": context, 
         "options": {
-            "num_ctx": 8192, # Large context window for long job descriptions
-            "temperature": 0.7 # Slight creativity, but mostly deterministic
-        }
+            "num_ctx": 4096,   
+            "temperature": 0.7,
+            "num_thread": 4    # Keep CPU usage sane
+        }    
     }
     try:
-        response = requests.post(OLLAMA_URL, json=data)
+        # Added timeout argument here
+        response = requests.post(OLLAMA_URL, json=data, timeout=TIMEOUT_SECONDS)
         response.raise_for_status()
         json_resp = response.json()
         return json_resp['response'], json_resp.get('context')
+        
+    except requests.exceptions.Timeout:
+        console.print(f"[bold red]❌ Timeout! Ollama took longer than {TIMEOUT_SECONDS}s.[/bold red]")
+        return None, None
     except Exception as e:
         console.print(f"[bold red]❌ Connection Error: {e}[/bold red]")
-        console.print("Make sure Ollama is running: [bold]sudo systemctl start ollama[/bold]")
         return None, None
 
 def extract_code_blocks(text):
     """
     Robustly extracts the Resume and Cover Letter from the AI response.
-    It ignores chatty intros and looks specifically for LaTeX structure.
     """
+    if not text: return None, None
+
     # 1. Split by the RESUME delimiter
     parts = re.split(r"===\s*RESUME\s*===", text, flags=re.IGNORECASE)
     if len(parts) < 2: 
@@ -113,14 +124,10 @@ def extract_code_blocks(text):
     raw_cover = subparts[1]
     
     def extract_latex(raw_text):
-        """Finds content between \documentclass and \end{document}"""
-        # Look for the start of the document
         start_match = re.search(r"\\documentclass", raw_text)
-        # Look for the end of the document
         end_match = re.search(r"\\end\{document\}", raw_text)
         
         if start_match and end_match:
-            # Extract exactly the valid block
             return raw_text[start_match.start() : end_match.end()]
         return None
     
@@ -128,17 +135,16 @@ def extract_code_blocks(text):
     cover_clean = extract_latex(raw_cover)
     
     return resume_clean, cover_clean
+
 # -----------------------------------------------------------------------------
 # MAIN LOGIC
 # -----------------------------------------------------------------------------
 
 def run():
-    # 1. Connect to Database
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # 2. Fetch APPROVED jobs (Filtered by filter_jobs.py)
     cursor.execute("SELECT * FROM jobs WHERE status = 'approved'")
     jobs = cursor.fetchall()
     
@@ -146,7 +152,6 @@ def run():
         console.print("[yellow]No approved jobs waiting. (Run src/filter_jobs.py first?)[/yellow]")
         return
 
-    # 3. Load Templates
     try:
         resume_tpl = get_template("resume.tex")
         cover_tpl = get_template("cover.tex")
@@ -154,106 +159,92 @@ def run():
         console.print(f"[red]{e}[/red]")
         return
 
-    # 4. Process Each Job
     for job in jobs:
         console.print(f"\n[bold cyan]🤖 Processing: {job['company']} - {job['title']}[/bold cyan]")
         
+        # --- CHECK IF ALREADY EXISTS ---
+        safe_title = re.sub(r'[^\w\-_]', '_', f"{job['company']}_{job['title']}")
+        folder_path = os.path.join(OUTPUT_DIR, safe_title)
+        
+        resume_path = os.path.join(folder_path, "resume.tex")
+        cover_path = os.path.join(folder_path, "cover.tex")
+
+        # If both files exist, skip this job
+        if os.path.exists(resume_path) and os.path.exists(cover_path):
+            console.print(f"[dim]   ⏭️  Already generated in {folder_path}. Skipping.[/dim]")
+            continue
+
         # --- PHASE 1: DRAFTING ---
         prompt_draft = f"""
 TASK:
-Generate a tailored LaTeX resume AND LaTeX cover letter for the following job posting,
-using the provided LaTeX templates and candidate profile.
+Generate a tailored LaTeX resume AND LaTeX cover letter for the following job posting.
 
 OUTPUT REQUIREMENTS:
 1. Output TWO separate LaTeX documents:
    - Resume (.tex)
    - Cover Letter (.tex)
 2. Use the moderncv class exactly as in the templates
-3. Keep content ATS-friendly: No tables, No icons, Clear keywords.
+3. Keep content ATS-friendly: No tables, No icons.
 4. Adapt wording to match the job posting.
 5. Emphasize technical, pipeline, automation, and graphics relevance.
-6. Do NOT exaggerate or fabricate experience.
-7. Use concise, professional VFX/Game industry language.
 
-––––––––––––––––––––
-JOB POSTING (RAW TEXT):
+JOB POSTING:
 {job['description'][:3500]}
 
-––––––––––––––––––––
-CANDIDATE PROFILE (GROUND TRUTH — DO NOT INVENT):
+CANDIDATE PROFILE:
 {CANDIDATE_PROFILE}
 
-––––––––––––––––––––
-LATEX RESUME TEMPLATE (DO NOT CHANGE STRUCTURE):
+LATEX RESUME TEMPLATE:
 {resume_tpl}
 
-––––––––––––––––––––
-LATEX COVER LETTER TEMPLATE (DO NOT CHANGE STRUCTURE):
+LATEX COVER LETTER TEMPLATE:
 {cover_tpl}
 
-––––––––––––––––––––
-ADAPTATION RULES:
-- Mirror terminology from the job description when truthful.
-- Prioritize Python, automation, pipeline support, and graphics foundations.
-- If the role is Games-focused, emphasize real-time graphics and tools.
-- If the role is VFX-focused, emphasize pipeline, data, and production support.
-- Keep resume to 1 page when possible.
-
-––––––––––––––––––––
 FINAL OUTPUT FORMAT:
-
 === RESUME ===
 <LaTeX code>
-
 === COVER LETTER ===
 <LaTeX code>
 """
-        console.print("   ↳ 🧠 Drafting content...")
+        console.print("   ↳ 1/2 Drafting content...")
         response_draft, context = call_ollama(prompt_draft)
-        if not response_draft: continue
+        
+        # If timeout or error occurred, skip to next job
+        if not response_draft: 
+            console.print("[yellow]   ⚠️  Skipping due to error/timeout.[/yellow]")
+            continue
 
         # --- PHASE 2: VERIFICATION ---
         prompt_verify = """
 Review the generated resume and cover letter.
-
-Check for:
-1. Invented tools or skills (Hallucinations).
-2. Overclaiming seniority.
-3. Buzzwords without evidence.
-4. ATS-breaking formatting.
-5. LaTeX compilation errors (ensure % and & are escaped like \% \&).
-6. Ensure placeholders like [COMPANY_NAME] in the cover letter are filled with the real company name.
-
-If issues exist:
-- Correct them.
-- Output the fixed LaTeX in the same format:
+Check for hallucinations, formatting errors, and ensure placeholders are filled.
+Output fixed LaTeX:
 
 === RESUME ===
 ...
 === COVER LETTER ===
 ...
 """
-        console.print("   ↳ 🕵️  Verifying & Polishing...")
+        console.print("   ↳ 2/2  Verifying & Polishing...")
         response_final, _ = call_ollama(prompt_verify, context=context)
+        
+        if not response_final:
+             console.print("[yellow]   ⚠️  Skipping verification due to error/timeout.[/yellow]")
+             continue
 
         # --- PHASE 3: SAVING ---
         resume, cover = extract_code_blocks(response_final)
         
         if resume and cover:
-            # Create a safe folder name (e.g., "MPC_Pipeline_TD")
-            safe_title = re.sub(r'[^\w\-_]', '_', f"{job['company']}_{job['title']}")
-            folder_path = os.path.join(OUTPUT_DIR, safe_title)
             os.makedirs(folder_path, exist_ok=True)
             
-            # Write files
-            with open(os.path.join(folder_path, "resume.tex"), "w") as f:
+            with open(resume_path, "w") as f:
                 f.write(resume)
-            with open(os.path.join(folder_path, "cover.tex"), "w") as f:
+            with open(cover_path, "w") as f:
                 f.write(cover)
                 
             console.print(f"[green]   ✅ Saved to: {folder_path}[/green]")
             
-            # Mark as done in DB
             cursor.execute("UPDATE jobs SET status = 'generated' WHERE id = ?", (job['id'],))
             conn.commit()
         else:

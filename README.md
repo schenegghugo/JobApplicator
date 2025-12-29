@@ -1,14 +1,13 @@
-Here is a completely updated, feature-complete **README.md** that reflects your new capabilities (AI generation, LaTeX compilation, and the TUI).
 
 ***
 
-# 🚀 JobApplicator
+# JobApplicator
 
 **JobApplicator** is a local, privacy-focused automation suite designed to streamline the job application process for technical roles. It handles everything from finding the job to generating the final PDF application.
 
 It bypasses generic job boards by scraping company career portals directly, stores data locally, uses **Local AI (LLMs)** to write tailored resumes and cover letters, and compiles them into professional **LaTeX PDFs**.
 
-## ✨ Features
+## Features
 
 *   **🕷️ Automated Scraping:** Ingests job listings directly from ATS providers (e.g., Teamtailor) using Playwright.
 *   **💾 Local Data Warehouse:** Stores structured job data in SQLite to prevent duplicate processing.
@@ -16,7 +15,7 @@ It bypasses generic job boards by scraping company career portals directly, stor
 *   **📄 PDF Compilation:** Automatically compiles LaTeX templates into professional PDFs using `pdflatex`.
 *   **🖥️ TUI Dashboard:** A central terminal interface to manage the entire pipeline.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 *   **Core:** Python 3.11+
 *   **Web Automation:** Playwright, BeautifulSoup4
@@ -25,7 +24,7 @@ It bypasses generic job boards by scraping company career portals directly, stor
 *   **Typesetting:** LaTeX (TeX Live)
 *   **UI:** Rich (Terminal User Interface)
 
-## ⚙️ Prerequisites
+## Prerequisites
 
 Before running the tool, ensure you have the following installed:
 
@@ -41,7 +40,7 @@ Before running the tool, ensure you have the following installed:
     ollama pull llama3
     ```
 
-## 📦 Installation
+## Installation
 
 1.  **Clone the repository:**
     ```bash
@@ -66,7 +65,7 @@ Before running the tool, ensure you have the following installed:
     bash setup.sh
     ```
 
-## 🚀 Usage
+## Usage
 
 The easiest way to use JobApplicator is via the main dashboard.
 
@@ -82,7 +81,7 @@ python main.py
 4.  **[4] Generate LaTeX:** The AI reads the `approved` jobs and writes a custom `resume.tex` and `cover.tex` for each.
 5.  **[5] Compile PDFs:** Compiles the `.tex` files into final `.pdf` documents ready for submission.
 
-## 🔧 Configuration
+## Configuration
 
 ### 1. Target Companies
 Edit `config/targets.yaml` to add company career pages:
@@ -101,7 +100,7 @@ Customize the base LaTeX templates in:
 *   `data/templates/resume.tex`
 *   `data/templates/cover.tex`
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 JobApplicator/
@@ -118,6 +117,6 @@ JobApplicator/
 └── requirements.txt
 ```
 
-## ⚖️ Disclaimer
+## Disclaimer
 
 This tool is intended for personal use to organize job applications. It includes rate-limiting (politeness delays) to minimize server load. It is not intended for commercial data resale or aggregation at scale. Please respect the `robots.txt` of target websites.

@@ -14,13 +14,13 @@ console = Console()
 POSITIVE_KEYWORDS = {
     "pipeline", "td", "technical", "python", "coordinator", 
     "assistant", "runner", "atd", "mid", "automation", "tools",
-    "developer", "programmer", "engineer", "devops", "software" # Added a few common ones
+    "developer", "data", "analyst", "programmer", "engineer", "devops", "software" # Added a few common ones
 }
 
 NEGATIVE_KEYWORDS = {
     "senior", "lead", "supervisor", "principal", "head", "chief",
     "finance", "hr", "legal", "accountant", "marketing", "sales",
-    "art", "lighter", "animator", "modeler", "compositor", "concept", "JavaScript", 
+    "art", "lighter", "animator", "modeler", "compositor", "Java", "concept", "JavaScript", 
     "rigger", "fx" # Unless you want FX TD roles, keep FX here or move to positive
 }
 
