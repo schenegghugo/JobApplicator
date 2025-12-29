@@ -1,4 +1,4 @@
-teamtailor:
+targets:
   - https://career.paradoxplaza.com/jobs
   - https://careers.avalanchestudios.com/jobs
   - https://career.embark-studios.com/jobs
@@ -15,7 +15,10 @@ teamtailor:
   - https://jobs.mightanddelight.com/jobs
   - https://career.goodbyekansas.com/jobs
   - https://career.edisen.com/jobs
-
+  - https://www.ilpvfx.com/jobs/
+  - https://filmgate.se/jobs/
+  - https://fablefx.com/jobs/
+  
 custom:
   # Add custom parsers later for these
   # - https://www.ea.com/careers

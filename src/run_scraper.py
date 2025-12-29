@@ -1,25 +1,30 @@
 import sys
 import os
-
-# Ensure we can import modules from src/ regardless of execution context
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 import yaml
 import sqlite3
 import hashlib
 from rich.console import Console
 from playwright.sync_api import sync_playwright
 
-# Correct absolute import based on the sys.path modification
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.scrapers.parsers.teamtailor import parse_teamtailor
+from src.scrapers.parsers.greenhouse import parse_greenhouse
+from src.scrapers.parsers.lever import parse_lever
+from src.scrapers.parsers.ashby import parse_ashby
+from src.scrapers.parsers.simple import parse_simple
 
 console = Console()
 DB_PATH = "data/db/jobs.db"
 CONFIG_PATH = "config/targets.yaml"
 
-def load_config():
+def load_targets():
     with open(CONFIG_PATH, 'r') as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    all_urls = []
+    for group, urls in data.items():
+        if isinstance(urls, list):
+            all_urls.extend(urls)
+    return list(set(all_urls))
 
 def save_to_db(jobs):
     conn = sqlite3.connect(DB_PATH)
@@ -39,56 +44,94 @@ def save_to_db(jobs):
     conn.close()
     return new_count
 
+def derive_company_name(url):
+    try:
+        if "ilpvfx" in url: return "ilp"
+        if "fablefx" in url: return "fablefx"
+        if "filmgate" in url: return "filmgate"
+        
+        parts = url.split('//')[1].split('.')
+        if parts[0] in ['jobs', 'careers', 'career', 'www']:
+            return parts[1]
+        return parts[0]
+    except:
+        return "unknown"
+
 def run():
-    config = load_config()
-    targets = config.get('teamtailor', [])
-    
-    console.print(f"[bold cyan]🚀 Starting Scraper (Powered by Playwright) for {len(targets)} sites...[/bold cyan]")
+    targets = load_targets()
+    console.print(f"[bold cyan]🚀 Starting Smart Scraper for {len(targets)} sites...[/bold cyan]")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        
+        # --- FIX 1: IGNORE SSL ERRORS ---
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ignore_https_errors=True
         )
         
-        total_found = 0
+        total_new = 0
 
         for url in targets:
+            company_name = derive_company_name(url)
+            console.print(f"   🔎 Visiting [bold]{company_name}[/bold]...")
+            
+            page = context.new_page()
             try:
-                # Company Name Logic
-                try:
-                    company_name = url.split('//')[1].split('.')[0]
-                    if company_name in ['jobs', 'career', 'careers']:
-                        company_name = url.split('//')[1].split('.')[1]
-                except:
-                    company_name = "unknown"
-
-                console.print(f"   🔎 Scraping [bold]{company_name}[/bold]...")
+                # --- FIX 2: ROBUST NAVIGATION ---
+                # Increased timeout to 45s for roaming
+                # Using 'commit' instead of 'domcontentloaded' sometimes helps with redirects
+                page.goto(url, timeout=45000, wait_until="domcontentloaded")
                 
-                page = context.new_page()
-                try:
-                    page.goto(url, timeout=15000, wait_until="domcontentloaded")
-                    page.wait_for_timeout(1000) # Small breath
-                    
-                    content = page.content()
+                # Scroll to bottom to trigger lazy loading (Fixes Starbreeze)
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(2000) 
+
+                content = page.content()
+                jobs = []
+                parser_used = "none"
+
+                # 1. Teamtailor
+                if not jobs:
                     jobs = parse_teamtailor(content, company_name)
+                    if jobs: parser_used = "Teamtailor"
+
+                # 2. Greenhouse
+                if not jobs:
+                    jobs = parse_greenhouse(content, company_name)
+                    if jobs: parser_used = "Greenhouse"
+
+                # 3. Lever
+                if not jobs:
+                    jobs = parse_lever(content, company_name)
+                    if jobs: parser_used = "Lever"
+
+                # 4. Ashby
+                if not jobs:
+                    jobs = parse_ashby(content, company_name)
+                    if jobs: parser_used = "Ashby"
+
+                # 5. Simple HTML
+                if not jobs:
+                    jobs = parse_simple(content, company_name, url)
+                    if jobs: parser_used = "Simple/HTML"
+
+                if jobs:
                     new_jobs = save_to_db(jobs)
-                    
+                    total_new += new_jobs
                     color = "green" if new_jobs > 0 else "yellow"
-                    console.print(f"      ↳ Found {len(jobs)} jobs. [{color}]New: {new_jobs}[/{color}]")
-                    total_found += new_jobs
-                    
-                except Exception as e:
-                    console.print(f"[red]      ❌ Failed to load page: {e}[/red]")
-                finally:
-                    page.close()
-                    
+                    console.print(f"      ✅ Parsed via [cyan]{parser_used}[/cyan]. Found {len(jobs)}. [{color}]New: {new_jobs}[/{color}]")
+                else:
+                    console.print(f"[dim]      ❌ No jobs found with any parser.[/dim]")
+
             except Exception as e:
-                console.print(f"[red]      ❌ Critical Error: {e}[/red]")
+                console.print(f"[red]      ❌ Error: {e}[/red]")
+            finally:
+                page.close()
 
         browser.close()
 
-    console.print(f"\n[bold green]✨ Done! Total new jobs saved: {total_found}[/bold green]")
+    console.print(f"\n[bold green]✨ Run complete! Total new jobs: {total_new}[/bold green]")
 
 if __name__ == "__main__":
     run()
