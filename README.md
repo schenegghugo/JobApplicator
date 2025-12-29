@@ -1,85 +1,123 @@
-# JobApplicator
+Here is a completely updated, feature-complete **README.md** that reflects your new capabilities (AI generation, LaTeX compilation, and the TUI).
 
-JobApplicator is a local automation suite designed to aggregate, filter, and manage job applications for specific technical roles. It automates the ingestion of job listings from targeted company career portals (ATS), parses unstructured data into a structured SQLite database, and streamlines the application process.
+***
 
-## Project Overview
+# 🚀 JobApplicator
 
-The system allows for targeted monitoring of high-interest companies, specifically within the Nordic tech and game development sectors. By bypassing generic job boards and querying Applicant Tracking Systems (ATS) directly, it ensures data freshness and access to unadvertised roles.
+**JobApplicator** is a local, privacy-focused automation suite designed to streamline the job application process for technical roles. It handles everything from finding the job to generating the final PDF application.
 
-## Technical Architecture
+It bypasses generic job boards by scraping company career portals directly, stores data locally, uses **Local AI (LLMs)** to write tailored resumes and cover letters, and compiles them into professional **LaTeX PDFs**.
 
-The application is built in Python and follows a modular ETL (Extract, Transform, Load) architecture:
+## ✨ Features
 
-*   **Extraction Layer:** Uses **Playwright** (headless Chromium) to handle dynamic JavaScript rendering and **BeautifulSoup4** for static HTML parsing. It supports custom parser strategies for different ATS providers (e.g., Teamtailor).
-*   **Storage Layer:** A normalized **SQLite** database stores job metadata, full descriptions, and application status, preventing duplicate processing via content hashing.
-*   **Processing Layer:** Includes logic for scraping orchestration, robust error handling, and rate limiting to respect server load.
-*   **Configuration:** YAML-based configuration for managing target URLs, role keywords, and exclusion criteria without code modification.
+*   **🕷️ Automated Scraping:** Ingests job listings directly from ATS providers (e.g., Teamtailor) using Playwright.
+*   **💾 Local Data Warehouse:** Stores structured job data in SQLite to prevent duplicate processing.
+*   **🧠 AI-Powered Writing:** Uses **Ollama (Llama 3)** to generate tailored cover letters and adjust resumes based on specific job descriptions.
+*   **📄 PDF Compilation:** Automatically compiles LaTeX templates into professional PDFs using `pdflatex`.
+*   **🖥️ TUI Dashboard:** A central terminal interface to manage the entire pipeline.
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-*   **Language:** Python 3.11+
-*   **Web Automation:** Playwright, Requests
-*   **Parsing:** BeautifulSoup4, lxml
-*   **Data Validation:** Pydantic
-*   **Database:** SQLite, SQLAlchemy (Core)
-*   **CLI Interface:** Rich
+*   **Core:** Python 3.11+
+*   **Web Automation:** Playwright, BeautifulSoup4
+*   **Database:** SQLite
+*   **AI/LLM:** Ollama (running Llama 3 locally)
+*   **Typesetting:** LaTeX (TeX Live)
+*   **UI:** Rich (Terminal User Interface)
 
-## Installation
+## ⚙️ Prerequisites
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/schenegghugo/JobApplicator.git
-   cd JobApplicator
+Before running the tool, ensure you have the following installed:
 
-    Set up the virtual environment:
+1.  **System Dependencies (Arch Linux Example):**
+    You need a working LaTeX distribution to compile the PDFs.
+    ```bash
+    sudo pacman -S texlive-publishers texlive-fontsextra python-pipx
+    ```
 
-    bash
+2.  **Ollama (Local AI):**
+    Install [Ollama](https://ollama.com/) and pull the model:
+    ```bash
+    ollama pull llama3
+    ```
 
-python -m venv .venv
-source .venv/bin/activate
+## 📦 Installation
 
-Install dependencies:
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/schenegghugo/JobApplicator.git
+    cd JobApplicator
+    ```
 
-bash
+2.  **Set up the Virtual Environment:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
 
-pip install -r requirements.txt
-playwright install chromium
+3.  **Install Python Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    playwright install chromium
+    ```
 
-Initialize the configuration:
-Run the setup script (Linux/Arch) to generate the directory structure and default config files.
-
-bash
-
+4.  **Initialize Directory Structure:**
+    ```bash
     bash setup.sh
+    ```
 
-Configuration
+## 🚀 Usage
 
-The system is controlled via config/targets.yaml. Define target URLs under their respective ATS providers:
+The easiest way to use JobApplicator is via the main dashboard.
 
-yaml
+```bash
+python main.py
+```
 
+### Workflow Steps:
+
+1.  **[1] Run Scraper:** Fetches new job titles/links from configured targets.
+2.  **[2] Scrape Details:** Visits each job URL to download the full HTML description.
+3.  **[3] Filter/Curate:** (Optional) Review jobs in the database and mark them as `approved` or `rejected`.
+4.  **[4] Generate LaTeX:** The AI reads the `approved` jobs and writes a custom `resume.tex` and `cover.tex` for each.
+5.  **[5] Compile PDFs:** Compiles the `.tex` files into final `.pdf` documents ready for submission.
+
+## 🔧 Configuration
+
+### 1. Target Companies
+Edit `config/targets.yaml` to add company career pages:
+
+```yaml
 teamtailor:
   - https://careers.paradoxplaza.com/jobs
   - https://jobs.fatsharkgames.com/jobs
+```
 
-Usage
+### 2. Candidate Profile
+Edit the `CANDIDATE_PROFILE` variable in `src/generate_application.py` to update your personal details, experience, and skills that the AI will use.
 
-1. Scrape Job Listings
-Fetches the latest job titles and URLs from configured targets and saves new entries to the database.
+### 3. Templates
+Customize the base LaTeX templates in:
+*   `data/templates/resume.tex`
+*   `data/templates/cover.tex`
 
-bash
+## 📂 Project Structure
 
-python src/run_scraper.py
+```text
+JobApplicator/
+├── config/             # Configuration files (targets.yaml)
+├── data/
+│   ├── applications/   # Generated output (One folder per job)
+│   ├── db/             # SQLite database (jobs.db)
+│   └── templates/      # Base LaTeX templates
+├── src/
+│   ├── main.py         # Entry point TUI
+│   ├── run_scraper.py  # ATS Scraper
+│   ├── generate_application.py # AI Content Generation
+│   └── compile_pdfs.py # LaTeX Compiler
+└── requirements.txt
+```
 
-2. Fetch Job Details
-Iterates through new database entries, visits the specific application URLs, and downloads the full HTML descriptions for local analysis.
+## ⚖️ Disclaimer
 
-bash
-
-python src/scrape_details.py
-
-Disclaimer
-
-This tool is intended for personal use to organize job applications. It includes rate-limiting (politeness delays) to minimize server load and adheres to standard web scraping ethics. It is not intended for commercial data resale or aggregation at scale.
-
-
+This tool is intended for personal use to organize job applications. It includes rate-limiting (politeness delays) to minimize server load. It is not intended for commercial data resale or aggregation at scale. Please respect the `robots.txt` of target websites.
