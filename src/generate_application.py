@@ -1,8 +1,10 @@
 import sqlite3
 import os
 import requests
+import json
 import re
 from rich.console import Console
+from jinja2 import Environment, FileSystemLoader
 
 console = Console()
 
@@ -15,9 +17,7 @@ TEMPLATE_DIR = "data/templates"
 OUTPUT_DIR = "data/applications"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "llama3.2"
-
-# Timeout in seconds (300s = 5 minutes)
-TIMEOUT_SECONDS = 900 
+TIMEOUT_SECONDS = 200
 
 # -----------------------------------------------------------------------------
 # CANDIDATE PROFILE
@@ -32,7 +32,6 @@ Links: github.com/schenegghugo
 
 Education:
 - CGI Filmmaker (M.A. equivalent), Supinfocom Arles (2021)
-  Focus: Computer Graphics, 3D pipelines, post-production
 
 Professional Experience:
 - Studio Coordinator, MPC Paris (Jan 2022 – Present)
@@ -53,94 +52,93 @@ Technical Skills:
 - Git
 - Maya
 - Data workflows and reconciliation
-
-Projects:
-- GraphicsLab (C++ / OpenGL / Vulkan)
-  GitHub: https://github.com/schenegghugo/GraphicsLab
-- JobApplicator (Python automation)
-  GitHub: https://github.com/schenegghugo/JobApplicator
 """
 
 # -----------------------------------------------------------------------------
 # HELPER FUNCTIONS
 # -----------------------------------------------------------------------------
 
-def get_template(name):
-    """Reads a template file from data/templates."""
-    path = os.path.join(TEMPLATE_DIR, name)
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Template not found: {path}")
-    with open(path, 'r') as f:
-        return f.read()
-
-def call_ollama(prompt, context=None):
-    """
-    Sends a request to the local AI model with a strict timeout.
-    """
+def call_ollama_json(prompt):
     data = {
         "model": MODEL_NAME,
         "prompt": prompt,
+        "format": "json",
         "stream": False,
-        "context": context, 
         "options": {
-            "num_ctx": 4096,   
-            "temperature": 0.7,
-            "num_thread": 4    # Keep CPU usage sane
-        }    
+            "num_ctx": 4096,
+            "temperature": 0.2
+        }
     }
     try:
-        # Added timeout argument here
         response = requests.post(OLLAMA_URL, json=data, timeout=TIMEOUT_SECONDS)
         response.raise_for_status()
-        json_resp = response.json()
-        return json_resp['response'], json_resp.get('context')
-        
-    except requests.exceptions.Timeout:
-        console.print(f"[bold red]❌ Timeout! Ollama took longer than {TIMEOUT_SECONDS}s.[/bold red]")
-        return None, None
+        return response.json()['response']
     except Exception as e:
-        console.print(f"[bold red]❌ Connection Error: {e}[/bold red]")
-        return None, None
-
-def extract_code_blocks(text):
-    """
-    Robustly extracts the Resume and Cover Letter from the AI response.
-    """
-    if not text: return None, None
-
-    # 1. Split by the RESUME delimiter
-    parts = re.split(r"===\s*RESUME\s*===", text, flags=re.IGNORECASE)
-    if len(parts) < 2: 
-        return None, None
-    
-    remainder = parts[1]
-    
-    # 2. Split by the COVER LETTER delimiter
-    subparts = re.split(r"===\s*COVER LETTER\s*===", remainder, flags=re.IGNORECASE)
-    if len(subparts) < 2: 
-        return None, None
-        
-    raw_resume = subparts[0]
-    raw_cover = subparts[1]
-    
-    def extract_latex(raw_text):
-        start_match = re.search(r"\\documentclass", raw_text)
-        end_match = re.search(r"\\end\{document\}", raw_text)
-        
-        if start_match and end_match:
-            return raw_text[start_match.start() : end_match.end()]
+        console.print(f"[bold red]❌ Ollama Error: {e}[/bold red]")
         return None
+
+def clean_json_string(json_str):
+    if not json_str: return ""
+    start = json_str.find('{')
+    end = json_str.rfind('}')
+    if start != -1 and end != -1:
+        return json_str[start:end+1]
+    return json_str
+
+def escape_tex(text):
+    """
+    Robustly escapes LaTeX special characters.
+    """
+    if not isinstance(text, str): return text
     
-    resume_clean = extract_latex(raw_resume)
-    cover_clean = extract_latex(raw_cover)
+    chars = {
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+        "\\": r"\textbackslash{}",
+    }
     
-    return resume_clean, cover_clean
+    regex = re.compile('|'.join(re.escape(key) for key in chars.keys()))
+    return regex.sub(lambda m: chars[m.group()], text)
+
+def check_if_sweden(job):
+    """Checks if the job is located in Sweden."""
+    text = (job['location'] + " " + job['description']).lower()
+    return any(x in text for x in ["sweden", "stockholm", "malmö", "malmo", "gothenburg"])
 
 # -----------------------------------------------------------------------------
 # MAIN LOGIC
 # -----------------------------------------------------------------------------
 
 def run():
+    if not os.path.exists(TEMPLATE_DIR):
+        console.print(f"[red]❌ Template directory not found: {TEMPLATE_DIR}[/red]")
+        return
+    
+    # Use LaTeX-safe delimiters
+    env = Environment(
+        loader=FileSystemLoader(TEMPLATE_DIR),
+        block_start_string='<%',
+        block_end_string='%>',
+        variable_start_string='<<',
+        variable_end_string='>>',
+        comment_start_string='<#',
+        comment_end_string='#>'
+    )
+    
+    try:
+        resume_template = env.get_template("resume.jinja")
+        cover_template = env.get_template("cover.jinja")
+    except Exception as e:
+        console.print(f"[bold red]❌ Template Error: {e}[/bold red]")
+        return
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -149,106 +147,134 @@ def run():
     jobs = cursor.fetchall()
     
     if not jobs:
-        console.print("[yellow]No approved jobs waiting. (Run src/filter_jobs.py first?)[/yellow]")
-        return
-
-    try:
-        resume_tpl = get_template("resume.tex")
-        cover_tpl = get_template("cover.tex")
-    except Exception as e:
-        console.print(f"[red]{e}[/red]")
+        console.print("[yellow]No approved jobs waiting.[/yellow]")
         return
 
     for job in jobs:
         console.print(f"\n[bold cyan]🤖 Processing: {job['company']} - {job['title']}[/bold cyan]")
         
-        # --- CHECK IF ALREADY EXISTS ---
         safe_title = re.sub(r'[^\w\-_]', '_', f"{job['company']}_{job['title']}")
         folder_path = os.path.join(OUTPUT_DIR, safe_title)
         
         resume_path = os.path.join(folder_path, "resume.tex")
         cover_path = os.path.join(folder_path, "cover.tex")
 
-        # If both files exist, skip this job
-        if os.path.exists(resume_path) and os.path.exists(cover_path):
-            console.print(f"[dim]   ⏭️  Already generated in {folder_path}. Skipping.[/dim]")
-            continue
+        # --- DYNAMIC SWEDEN LOGIC ---
+        is_sweden = check_if_sweden(job)
+        sweden_instruction = ""
+        if is_sweden:
+            console.print("   🇸🇪 Sweden detected! Adding relocation logic.")
+            sweden_instruction = """
+            CRITICAL SWEDEN INSTRUCTION:
+            - This job is in Sweden. You MUST add a specific paragraph in the cover letter body.
+            - State clearly: "My main motivation for relocating to Scandinavia is to be closer to my spouse's family."
+            - Mention that I speak conversational Swedish.
+            """
 
-        # --- PHASE 1: DRAFTING ---
-        prompt_draft = f"""
-TASK:
-Generate a tailored LaTeX resume AND LaTeX cover letter for the following job posting.
+        prompt = f"""
+You are an expert career coach and technical writer.
+Analyze the JOB DESCRIPTION and CANDIDATE PROFILE below.
+Write a highly customized resume summary and cover letter.
 
-OUTPUT REQUIREMENTS:
-1. Output TWO separate LaTeX documents:
-   - Resume (.tex)
-   - Cover Letter (.tex)
-2. Use the moderncv class exactly as in the templates
-3. Keep content ATS-friendly: No tables, No icons.
-4. Adapt wording to match the job posting.
-5. Emphasize technical, pipeline, automation, and graphics relevance.
-
-JOB POSTING:
-{job['description'][:3500]}
+JOB DESCRIPTION:
+{job['description'][:2500]}
 
 CANDIDATE PROFILE:
 {CANDIDATE_PROFILE}
 
-LATEX RESUME TEMPLATE:
-{resume_tpl}
+INSTRUCTIONS:
+1. "job_title_target": Use the exact job title from the listing.
+2. "profile_summary": Write 2 strong sentences in the FIRST PERSON ("I am...", "I have..."). Do NOT use third person ("Hugo is...").
+3. "mpc_bullets": Rewrite 4 specific bullet points from the candidate's MPC experience. Ensure they are relevant to the job.
+4. "skills_graphics": If the job mentions graphics/rendering, list "OpenGL, Vulkan, Rendering Pipelines". If not, list them anyway as they are core skills.
+5. "cover_letter_body": Write the BODY ONLY.
+   - Do NOT include "Dear Hiring Manager" (the template handles this).
+   - Do NOT include "Sincerely" or the signature (the template handles this).
+   - Paragraph 1: Enthusiastic intro mentioning the role.
+   - Paragraph 2: Connect Python/C++ skills to the requirements.
+   - Paragraph 3: Professional closing.
+   - USE DOUBLE NEWLINES (\\n\\n) between paragraphs.
+   {sweden_instruction}
 
-LATEX COVER LETTER TEMPLATE:
-{cover_tpl}
-
-FINAL OUTPUT FORMAT:
-=== RESUME ===
-<LaTeX code>
-=== COVER LETTER ===
-<LaTeX code>
+OUTPUT FORMAT (Pure JSON only):
+{{
+  "company_name": "{job['company']}",
+  "job_title": "{job['title']}",
+  "job_title_target": "...",
+  "profile_summary": "I am a...",
+  "skills_scripting": "Python, C++, Bash",
+  "skills_software": "Maya, Linux, Git",
+  "skills_graphics": "OpenGL, Vulkan, Rendering Pipelines",
+  "mpc_bullets": [
+    "Implemented...",
+    "Developed...",
+    "Coordinated...",
+    "Automated..."
+  ],
+  "cover_letter_body": "..."
+}}
 """
-        console.print("   ↳ 1/2 Drafting content...")
-        response_draft, context = call_ollama(prompt_draft)
+        console.print("   ↳ 🧠 Generating structured data...")
+        raw_json = call_ollama_json(prompt)
         
-        # If timeout or error occurred, skip to next job
-        if not response_draft: 
-            console.print("[yellow]   ⚠️  Skipping due to error/timeout.[/yellow]")
-            continue
+        if not raw_json: continue
 
-        # --- PHASE 2: VERIFICATION ---
-        prompt_verify = """
-Review the generated resume and cover letter.
-Check for hallucinations, formatting errors, and ensure placeholders are filled.
-Output fixed LaTeX:
+        try:
+            clean_str = clean_json_string(raw_json)
+            data = json.loads(clean_str)
 
-=== RESUME ===
-...
-=== COVER LETTER ===
-...
-"""
-        console.print("   ↳ 2/2  Verifying & Polishing...")
-        response_final, _ = call_ollama(prompt_verify, context=context)
-        
-        if not response_final:
-             console.print("[yellow]   ⚠️  Skipping verification due to error/timeout.[/yellow]")
-             continue
+            # --- DATA CLEANUP & FALLBACKS ---
 
-        # --- PHASE 3: SAVING ---
-        resume, cover = extract_code_blocks(response_final)
-        
-        if resume and cover:
-            os.makedirs(folder_path, exist_ok=True)
-            
-            with open(resume_path, "w") as f:
-                f.write(resume)
-            with open(cover_path, "w") as f:
-                f.write(cover)
+            # 1. Force Graphics Skills if empty
+            if not data.get("skills_graphics") or len(data["skills_graphics"]) < 3:
+                data["skills_graphics"] = "OpenGL, Vulkan, Rendering Pipelines"
+
+            # 2. Fix Cover Letter Paragraphs & Remove Greeting/Signoff
+            if "cover_letter_body" in data:
+                body = data["cover_letter_body"]
+                # Remove common duplications if the AI ignored instructions
+                body = re.sub(r"Dear.*?Manager,?", "", body, flags=re.IGNORECASE)
+                body = re.sub(r"Sincerely,?", "", body, flags=re.IGNORECASE)
+                body = re.sub(r"Hugo Schenegg", "", body, flags=re.IGNORECASE)
                 
-            console.print(f"[green]   ✅ Saved to: {folder_path}[/green]")
+                # Ensure Double Newlines
+                if "\n\n" not in body:
+                    body = body.replace("\n", "\n\n")
+                
+                data["cover_letter_body"] = escape_tex(body.strip())
+
+            # 3. Clean Bullets (Remove leading dashes)
+            if "mpc_bullets" in data and isinstance(data["mpc_bullets"], list):
+                cleaned_bullets = []
+                for b in data["mpc_bullets"]:
+                    # Remove leading "- " or "* " and whitespace
+                    clean_b = re.sub(r"^[\-\*]\s*", "", b).strip()
+                    cleaned_bullets.append(clean_b)
+                data["mpc_bullets"] = cleaned_bullets
+
+            # --- ESCAPING FOR LATEX ---
+            for key, value in data.items():
+                if key == "cover_letter_body": continue # Already handled
+                if isinstance(value, str):
+                    data[key] = escape_tex(value)
+                elif isinstance(value, list):
+                    data[key] = [escape_tex(v).replace("\n", " ") for v in value]
+
+            # Render
+            resume_content = resume_template.render(data)
+            cover_content = cover_template.render(data)
+            
+            os.makedirs(folder_path, exist_ok=True)
+            with open(resume_path, "w") as f: f.write(resume_content)
+            with open(cover_path, "w") as f: f.write(cover_content)
+            
+            console.print(f"[green]   ✅ Generated LaTeX in: {folder_path}[/green]")
             
             cursor.execute("UPDATE jobs SET status = 'generated' WHERE id = ?", (job['id'],))
             conn.commit()
-        else:
-            console.print("[red]   ❌ Could not parse AI output. Skipping.[/red]")
+            
+        except Exception as e:
+            console.print(f"[red]   ❌ Processing Error: {e}[/red]")
 
     conn.close()
     console.print("\n[bold green]✨ Generation complete![/bold green]")

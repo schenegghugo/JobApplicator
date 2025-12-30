@@ -1,0 +1,15 @@
+requests
+beautifulsoup4
+lxml
+playwright
+PyYAML
+jinja2
+python-dotenv
+sqlalchemy
+rich
+tqdm
+spacy
+pydantic
+langdetect
+regex
+click
