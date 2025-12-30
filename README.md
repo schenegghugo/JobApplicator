@@ -1,122 +1,81 @@
+Here is the comprehensive summary of the **JobApplicator** project.
 
-***
+### Project: JobApplicator
+**Goal:** A fully automated, local-first pipeline to scrape job listings, manage applications, and generate hyper-tailored, professional LaTeX resumes and cover letters using AI.
 
-# JobApplicator
+---
 
-**JobApplicator** is a local, privacy-focused automation suite designed to streamline the job application process for technical roles. It handles everything from finding the job to generating the final PDF application.
+### Tech Stack
+*   **Language:** Python 3.10+
+*   **AI Engine:** **Ollama** (running Llama 3.2 locally) – *Zero cost, high privacy.*
+*   **Web Scraping:** **Playwright** + **BeautifulSoup** – *Handles dynamic JS sites.*
+*   **Database:** **SQLite** – *Lightweight local storage.*
+*   **Templating:** **Jinja2** – *Python logic inside text files.*
+*   **Typesetting:** **LaTeX** (ModernCV) – *Industry-standard PDF generation.*
+*   **UI/Logging:** **Rich** – *Beautiful terminal output.*
 
-It bypasses generic job boards by scraping company career portals directly, stores data locally, uses **Local AI (LLMs)** to write tailored resumes and cover letters, and compiles them into professional **LaTeX PDFs**.
+---
 
-## Features
+### The Workflow Pipeline
 
-*   **🕷️ Automated Scraping:** Ingests job listings directly from ATS providers (e.g., Teamtailor) using Playwright.
-*   **💾 Local Data Warehouse:** Stores structured job data in SQLite to prevent duplicate processing.
-*   **🧠 AI-Powered Writing:** Uses **Ollama (Llama 3)** to generate tailored cover letters and adjust resumes based on specific job descriptions.
-*   **📄 PDF Compilation:** Automatically compiles LaTeX templates into professional PDFs using `pdflatex`.
-*   **🖥️ TUI Dashboard:** A central terminal interface to manage the entire pipeline.
+#### 1. Discovery (`src/scrape_jobs.py`)
+*   **Action:** Browses career pages (Paradox, Fatshark, Goodbye Kansas, etc.) using a headless browser.
+*   **Logic:** Extracts Job Title, Location, and full Description.
+*   **Storage:** Saves new listings into `data/db/jobs.db` with status `new`.
 
-## Tech Stack
+#### 2. Curation (Manual/SQL)
+*   **Action:** You review the database (via SQLite browser or script).
+*   **Logic:** Change status from `new` $\to$ `approved` for jobs you want to apply to.
 
-*   **Core:** Python 3.11+
-*   **Web Automation:** Playwright, BeautifulSoup4
-*   **Database:** SQLite
-*   **AI/LLM:** Ollama (running Llama 3 locally)
-*   **Typesetting:** LaTeX (TeX Live)
-*   **UI:** Rich (Terminal User Interface)
+#### 3. Generation (`src/generate_application.py`)
+*   **Action:** Reads `approved` jobs and your **Candidate Profile**.
+*   **AI Processing:** Sends a strict prompt to Ollama asking for **JSON output**:
+    *   Summarizes why you fit the role (First-person).
+    *   Rewrites your experience bullets to match the job description.
+    *   Writes a custom cover letter body.
+*   **Smart Logic:**
+    *   **🇸🇪 Sweden Detector:** If the job is in Sweden, injects a paragraph about your spouse's family and your Swedish language skills.
+    *   **Bullet Cleaner:** Automatically strips leading dashes (`-`) to prevent double bullets in PDF.
+    *   **Skill Fallback:** Ensures `OpenGL` and `Vulkan` appear even if the AI forgets them.
+*   **Templating:** Injects data into `resume.jinja` and `cover.jinja` using **LaTeX-safe delimiters** (`<< >>` instead of `{{ }}`) to prevent syntax errors.
 
-## Prerequisites
+#### 4. Compilation (`src/compile_pdfs.py`)
+*   **Action:** Iterates through generated folders in `data/applications/`.
+*   **Logic:** Runs `pdflatex` or `lualatex` to turn `.tex` source files into professional PDFs.
 
-Before running the tool, ensure you have the following installed:
+---
 
-1.  **System Dependencies (Arch Linux Example):**
-    You need a working LaTeX distribution to compile the PDFs.
-    ```bash
-    sudo pacman -S texlive-publishers texlive-fontsextra python-pipx
-    ```
-
-2.  **Ollama (Local AI):**
-    Install [Ollama](https://ollama.com/) and pull the model:
-    ```bash
-    ollama pull llama3
-    ```
-
-## Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/schenegghugo/JobApplicator.git
-    cd JobApplicator
-    ```
-
-2.  **Set up the Virtual Environment:**
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate
-    ```
-
-3.  **Install Python Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    playwright install chromium
-    ```
-
-4.  **Initialize Directory Structure:**
-    ```bash
-    bash setup.sh
-    ```
-
-## Usage
-
-The easiest way to use JobApplicator is via the main dashboard.
-
-```bash
-python main.py
-```
-
-### Workflow Steps:
-
-1.  **[1] Run Scraper:** Fetches new job titles/links from configured targets.
-2.  **[2] Scrape Details:** Visits each job URL to download the full HTML description.
-3.  **[3] Filter/Curate:** (Optional) Review jobs in the database and mark them as `approved` or `rejected`.
-4.  **[4] Generate LaTeX:** The AI reads the `approved` jobs and writes a custom `resume.tex` and `cover.tex` for each.
-5.  **[5] Compile PDFs:** Compiles the `.tex` files into final `.pdf` documents ready for submission.
-
-## Configuration
-
-### 1. Target Companies
-Edit `config/targets.yaml` to add company career pages:
-
-```yaml
-teamtailor:
-  - https://careers.paradoxplaza.com/jobs
-  - https://jobs.fatsharkgames.com/jobs
-```
-
-### 2. Candidate Profile
-Edit the `CANDIDATE_PROFILE` variable in `src/generate_application.py` to update your personal details, experience, and skills that the AI will use.
-
-### 3. Templates
-Customize the base LaTeX templates in:
-*   `data/templates/resume.tex`
-*   `data/templates/cover.tex`
-
-## Project Structure
+### 📂 File Structure
 
 ```text
 JobApplicator/
-├── config/             # Configuration files (targets.yaml)
 ├── data/
-│   ├── applications/   # Generated output (One folder per job)
-│   ├── db/             # SQLite database (jobs.db)
-│   └── templates/      # Base LaTeX templates
+│   ├── db/
+│   │   └── jobs.db              # SQLite Database
+│   ├── templates/
+│   │   ├── resume.jinja         # ModernCV LaTeX template (<< >> delimiters)
+│   │   └── cover.jinja          # Cover Letter template
+│   └── applications/            # OUTPUT FOLDER
+│       └── Company_JobTitle/    # One folder per job
+│           ├── resume.tex       # Generated Source
+│           ├── cover.tex        # Generated Source
+│           ├── resume.pdf       # FINAL PDF
+│           └── cover.pdf        # FINAL PDF
 ├── src/
-│   ├── main.py         # Entry point TUI
-│   ├── run_scraper.py  # ATS Scraper
-│   ├── generate_application.py # AI Content Generation
-│   └── compile_pdfs.py # LaTeX Compiler
-└── requirements.txt
+│   ├── scrape_jobs.py           # Playwright scraper
+│   ├── generate_application.py  # The AI brain (Ollama + Logic)
+│   └── compile_pdfs.py          # PDF compiler
+├── requirements.txt             # Dependencies
+└── README.md
 ```
 
-## Disclaimer
+### Key Features Implemented
+1.  **LaTeX-Safe Templating:** We solved the conflict between Jinja `{{ }}` and LaTeX `{ }` by switching to `<< >>` and using `-%>` for strict whitespace control.
+2.  **Robust Escaping:** A dedicated regex function escapes special LaTeX characters (`&`, `_`, `%`, `$`) so the compiler never crashes on company names or code snippets.
+3.  **Strict JSON Enforcement:** The AI is forced to return pure JSON, which is then cleaned and parsed safely.
+4.  **Formatting Polish:**
+    *   **First-person enforcement:** "I am..." instead of "Name is..."
+    *   **Clean layouts:** No "Lonely \item" errors.
+    *   **Cover Letter formatting:** Proper paragraph breaks (double newlines) and removal of duplicate "Dear Manager" greetings.
 
-This tool is intended for personal use to organize job applications. It includes rate-limiting (politeness delays) to minimize server load. It is not intended for commercial data resale or aggregation at scale. Please respect the `robots.txt` of target websites.
+I offer you a **fully autonomous job hunting factory**. Good luck! 
