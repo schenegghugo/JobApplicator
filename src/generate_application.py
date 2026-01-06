@@ -112,6 +112,12 @@ def check_if_sweden(job):
     text = (job['location'] + " " + job['description']).lower()
     return any(x in text for x in ["sweden", "stockholm", "malmö", "malmo", "gothenburg"])
 
+def check_if_france(job):
+    """Checks if the job is located in France."""
+    text = (job['location'] + " " + job['description']).lower()
+    # Check specifically for France locations
+    return any(x in text for x in ["france", "paris", "lyon", "bordeaux", "montpellier", "lille"])
+
 # -----------------------------------------------------------------------------
 # MAIN LOGIC
 # -----------------------------------------------------------------------------
@@ -121,7 +127,7 @@ def run():
         console.print(f"[red]❌ Template directory not found: {TEMPLATE_DIR}[/red]")
         return
     
-    # Use LaTeX-safe delimiters
+    # Use LaTeX-safe delimiters to avoid conflicts
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
         block_start_string='<%',
@@ -159,8 +165,11 @@ def run():
         resume_path = os.path.join(folder_path, "resume.tex")
         cover_path = os.path.join(folder_path, "cover.tex")
 
-        # --- DYNAMIC SWEDEN LOGIC ---
+        # --- LOCATION INTELLIGENCE ---
         is_sweden = check_if_sweden(job)
+        is_france = check_if_france(job)
+        
+        # 1. Sweden Logic
         sweden_instruction = ""
         if is_sweden:
             console.print("   🇸🇪 Sweden detected! Adding relocation logic.")
@@ -171,10 +180,46 @@ def run():
             - Mention that I speak conversational Swedish.
             """
 
+        # 2. France Logic (Language Switching)
+        if is_france:
+            console.print("   🇫🇷 France detected! Switching to French mode.")
+            language_context = "FRENCH"
+            language_instruction = "IMPORTANT: Write ALL content (Summary, Bullets, Cover Letter) in PROFESSIONAL FRENCH (Français)."
+            
+            # French UI Strings
+            ui_strings = {
+                "h_profile": "Profil",
+                "h_experience": "Expérience Professionnelle",
+                "h_education": "Formation",
+                "h_skills": "Compétences Techniques",
+                "h_projects": "Projets Personnels",
+                "h_current_role": "Coordinateur de Studio",
+                "cl_opening": "Madame, Monsieur,",
+                "cl_closing": "Cordialement,"
+            }
+        else:
+            console.print("   🌍 International job. Writing in English.")
+            language_context = "ENGLISH"
+            language_instruction = "Write in ENGLISH."
+
+            # English UI Strings
+            ui_strings = {
+                "h_profile": "Profile",
+                "h_experience": "Experience",
+                "h_education": "Education",
+                "h_skills": "Technical Skills",
+                "h_projects": "Projects",
+                "h_current_role": "Studio Coordinator",
+                "cl_opening": "Dear Hiring Manager,",
+                "cl_closing": "Sincerely,"
+            }
+
         prompt = f"""
 You are an expert career coach and technical writer.
 Analyze the JOB DESCRIPTION and CANDIDATE PROFILE below.
 Write a highly customized resume summary and cover letter.
+
+CONTEXT: The target language is {language_context}.
 
 JOB DESCRIPTION:
 {job['description'][:2500]}
@@ -184,32 +229,35 @@ CANDIDATE PROFILE:
 
 INSTRUCTIONS:
 1. "job_title_target": Use the exact job title from the listing.
-2. "profile_summary": Write 2 strong sentences in the FIRST PERSON ("I am...", "I have..."). Do NOT use third person ("Hugo is...").
-3. "mpc_bullets": Rewrite 4 specific bullet points from the candidate's MPC experience. Ensure they are relevant to the job.
-4. "skills_graphics": If the job mentions graphics/rendering, list "OpenGL, Vulkan, Rendering Pipelines". If not, list them anyway as they are core skills.
+2. "profile_summary": Write 2 strong sentences in the FIRST PERSON ("I am...", "Je suis..."). Do NOT use third person.
+   - {language_instruction}
+3. "mpc_bullets": Rewrite 4 specific bullet points from the candidate's MPC experience.
+   - {language_instruction}
+4. "skills_graphics": If the job mentions graphics/rendering, list "OpenGL, Vulkan, Rendering Pipelines". If not, list them anyway.
 5. "cover_letter_body": Write the BODY ONLY.
-   - Do NOT include "Dear Hiring Manager" (the template handles this).
-   - Do NOT include "Sincerely" or the signature (the template handles this).
-   - Paragraph 1: Enthusiastic intro mentioning the role.
+   - Do NOT include "Dear Manager" / "Madame, Monsieur".
+   - Do NOT include "Sincerely" / "Cordialement".
+   - Paragraph 1: Enthusiastic intro.
    - Paragraph 2: Connect Python/C++ skills to the requirements.
    - Paragraph 3: Professional closing.
    - USE DOUBLE NEWLINES (\\n\\n) between paragraphs.
+   - {language_instruction}
    {sweden_instruction}
 
-OUTPUT FORMAT (Pure JSON only):
+OUTPUT FORMAT (Pure JSON only - Keys must be English, Values in {language_context}):
 {{
   "company_name": "{job['company']}",
   "job_title": "{job['title']}",
   "job_title_target": "...",
-  "profile_summary": "I am a...",
+  "profile_summary": "...",
   "skills_scripting": "Python, C++, Bash",
   "skills_software": "Maya, Linux, Git",
   "skills_graphics": "OpenGL, Vulkan, Rendering Pipelines",
   "mpc_bullets": [
-    "Implemented...",
-    "Developed...",
-    "Coordinated...",
-    "Automated..."
+    "...",
+    "...",
+    "...",
+    "..."
   ],
   "cover_letter_body": "..."
 }}
@@ -223,18 +271,25 @@ OUTPUT FORMAT (Pure JSON only):
             clean_str = clean_json_string(raw_json)
             data = json.loads(clean_str)
 
+            # --- DATA INJECTION ---
+            # Inject the language-specific UI headers into the data dictionary
+            data.update(ui_strings)
+
             # --- DATA CLEANUP & FALLBACKS ---
 
             # 1. Force Graphics Skills if empty
             if not data.get("skills_graphics") or len(data["skills_graphics"]) < 3:
                 data["skills_graphics"] = "OpenGL, Vulkan, Rendering Pipelines"
 
-            # 2. Fix Cover Letter Paragraphs & Remove Greeting/Signoff
+            # 2. Fix Cover Letter Paragraphs & Remove Greeting/Signoff (Double Check)
             if "cover_letter_body" in data:
                 body = data["cover_letter_body"]
-                # Remove common duplications if the AI ignored instructions
-                body = re.sub(r"Dear.*?Manager,?", "", body, flags=re.IGNORECASE)
-                body = re.sub(r"Sincerely,?", "", body, flags=re.IGNORECASE)
+                
+                # Cleanup regex for both English AND French greetings
+                # "Dear Manager", "Chère Madame", "Monsieur", etc.
+                body = re.sub(r"(Dear|Chère|Cher).*?Manager,?", "", body, flags=re.IGNORECASE)
+                body = re.sub(r"(Madame|Monsieur),?", "", body, flags=re.IGNORECASE)
+                body = re.sub(r"(Sincerely|Cordialement|Bien à vous),?", "", body, flags=re.IGNORECASE)
                 body = re.sub(r"Hugo Schenegg", "", body, flags=re.IGNORECASE)
                 
                 # Ensure Double Newlines
@@ -247,7 +302,7 @@ OUTPUT FORMAT (Pure JSON only):
             if "mpc_bullets" in data and isinstance(data["mpc_bullets"], list):
                 cleaned_bullets = []
                 for b in data["mpc_bullets"]:
-                    # Remove leading "- " or "* " and whitespace
+                    # Remove leading "- " or "* "
                     clean_b = re.sub(r"^[\-\*]\s*", "", b).strip()
                     cleaned_bullets.append(clean_b)
                 data["mpc_bullets"] = cleaned_bullets
@@ -255,6 +310,7 @@ OUTPUT FORMAT (Pure JSON only):
             # --- ESCAPING FOR LATEX ---
             for key, value in data.items():
                 if key == "cover_letter_body": continue # Already handled
+                
                 if isinstance(value, str):
                     data[key] = escape_tex(value)
                 elif isinstance(value, list):

@@ -49,24 +49,58 @@ Here is the comprehensive summary of the **JobApplicator** project.
 
 ```text
 JobApplicator/
+├── config/
+│   ├── keywords.yaml
+│   ├── targets.yaml
+│   └── targets_old.yaml
+│
 ├── data/
+│   ├── applications/
+│   │   ├── ea_Software_Engineer_-_Master_Thesis/
+│   │   ├── fatsharkgames_Procedural_Technical_Artist/
+│   │   ├── goodbyekansas_Expression_of_Interest.../
+│   │   ├── paradoxplaza_Backend_JavaScript_Developer/
+│   │   ├── paradoxplaza_Game_Programmer/
+│   │   └── ... (other generated job folders)
 │   ├── db/
-│   │   └── jobs.db              # SQLite Database
-│   ├── templates/
-│   │   ├── resume.jinja         # ModernCV LaTeX template (<< >> delimiters)
-│   │   └── cover.jinja          # Cover Letter template
-│   └── applications/            # OUTPUT FOLDER
-│       └── Company_JobTitle/    # One folder per job
-│           ├── resume.tex       # Generated Source
-│           ├── cover.tex        # Generated Source
-│           ├── resume.pdf       # FINAL PDF
-│           └── cover.pdf        # FINAL PDF
+│   │   └── jobs.db
+│   ├── logs/
+│   ├── raw_jobs/
+│   │   ├── ea__Development_Director...html
+│   │   ├── fatsharkgames__Game_Designer...html
+│   │   └── ... (other saved HTML files)
+│   └── templates/
+│       ├── cover.jinja
+│       ├── cover.tex
+│       ├── resume.jinja
+│       └── resume.tex
+│
 ├── src/
-│   ├── scrape_jobs.py           # Playwright scraper
-│   ├── generate_application.py  # The AI brain (Ollama + Logic)
-│   └── compile_pdfs.py          # PDF compiler
-├── requirements.txt             # Dependencies
-└── README.md
+│   ├── latex/
+│   ├── normalizers/
+│   ├── redactor/
+│   ├── scoring/
+│   ├── scrapers/
+│   │   ├── parsers/
+│   │   │   ├── ashby.py
+│   │   │   ├── greenhouse.py
+│   │   │   ├── lever.py
+│   │   │   ├── simple.py
+│   │   │   └── teamtailor.py
+│   │   └── __init__.py
+│   ├── utils/
+│   ├── compile_pdfs.py
+│   ├── filter_jobs.py
+│   ├── generate_application.py
+│   ├── reset_db.py
+│   ├── run_scraper.py
+│   └── scrape_details.py
+│
+├── job_sites.json
+├── main.py
+├── README.md
+├── requirements.txt
+└── setup.sh
 ```
 
 ### Key Features Implemented
