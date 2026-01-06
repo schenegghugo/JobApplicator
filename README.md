@@ -1,115 +1,132 @@
-Here is the comprehensive summary of the **JobApplicator** project.
+***
 
-### Project: JobApplicator
-**Goal:** A fully automated, local-first pipeline to scrape job listings, manage applications, and generate hyper-tailored, professional LaTeX resumes and cover letters using AI.
+# JobApplicator
 
----
+**JobApplicator** is a fully automated, local-first pipeline designed to scrape job listings, manage applications, and generate hyper-tailored, professional LaTeX resumes and cover letters using local AI.
 
-### Tech Stack
+## ⚡ Tech Stack
+
 *   **Language:** Python 3.10+
-*   **AI Engine:** **Ollama** (running Llama 3.2 locally) – *Zero cost, high privacy.*
-*   **Web Scraping:** **Playwright** + **BeautifulSoup** – *Handles dynamic JS sites.*
+*   **AI Engine:** **Ollama** (Llama 3.2) – *Zero cost, high privacy, runs locally.*
+*   **Web Scraping:** **Playwright** + **BeautifulSoup** – *Handles dynamic JS sites & smart parsing.*
 *   **Database:** **SQLite** – *Lightweight local storage.*
-*   **Templating:** **Jinja2** – *Python logic inside text files.*
+*   **Templating:** **Jinja2** – *Logic-based content generation.*
 *   **Typesetting:** **LaTeX** (ModernCV) – *Industry-standard PDF generation.*
 *   **UI/Logging:** **Rich** – *Beautiful terminal output.*
 
 ---
 
-### The Workflow Pipeline
+## 🔄 The Workflow Pipeline
 
-#### 1. Discovery (`src/scrape_jobs.py`)
-*   **Action:** Browses career pages (Paradox, Fatshark, Goodbye Kansas, etc.) using a headless browser.
-*   **Logic:** Extracts Job Title, Location, and full Description.
+### 1. Discovery (`src/run_scraper.py`)
+*   **Action:** Browses career pages defined in `config/targets.yaml`.
+*   **Logic:** Uses a **Smart Dispatcher** to detect the ATS (Greenhouse, Teamtailor, Lever, etc.) and routes the HTML to a **Unified Parser**.
 *   **Storage:** Saves new listings into `data/db/jobs.db` with status `new`.
 
-#### 2. Curation (Manual/SQL)
-*   **Action:** You review the database (via SQLite browser or script).
-*   **Logic:** Change status from `new` $\to$ `approved` for jobs you want to apply to.
+### 2. Extraction (`src/scrape_details.py`)
+*   **Action:** Visits the specific job URL for every `new` job found.
+*   **Logic:** Downloads the full HTML body and extracts the raw text description.
+*   **Output:** Saves raw HTML to `data/raw_jobs/` and updates the DB entry.
 
-#### 3. Generation (`src/generate_application.py`)
-*   **Action:** Reads `approved` jobs and your **Candidate Profile**.
-*   **AI Processing:** Sends a strict prompt to Ollama asking for **JSON output**:
-    *   Summarizes why you fit the role (First-person).
-    *   Rewrites your experience bullets to match the job description.
+### 3. Curation (Manual)
+*   **Action:** You review the database (using a SQLite browser or custom script).
+*   **Logic:** Change the status of jobs you want to apply for from `new` $\to$ `approved`.
+
+### 4. Generation (`src/generate_application.py`)
+*   **Action:** Reads `approved` jobs and your Candidate Profile.
+*   **AI Processing:** Sends a strict prompt to **Ollama** requesting **JSON output**:
+    *   Summarizes fit for the role (First-person).
+    *   Rewrites experience bullets to match the job description keywords.
     *   Writes a custom cover letter body.
 *   **Smart Logic:**
-    *   **🇸🇪 Sweden Detector:** If the job is in Sweden, injects a paragraph about your spouse's family and your Swedish language skills.
-    *   **Bullet Cleaner:** Automatically strips leading dashes (`-`) to prevent double bullets in PDF.
-    *   **Skill Fallback:** Ensures `OpenGL` and `Vulkan` appear even if the AI forgets them.
-*   **Templating:** Injects data into `resume.jinja` and `cover.jinja` using **LaTeX-safe delimiters** (`<< >>` instead of `{{ }}`) to prevent syntax errors.
+    *   **🇸🇪 Sweden Detector:** Injects specific clauses about language skills/family if the location is Swedish.
+    *   **LaTeX Safety:** Escapes special characters (`&`, `%`, `_`) to prevent compiler crashes.
+    *   **Jinja Templating:** Uses `<< >>` delimiters to avoid conflicts with LaTeX syntax.
 
-#### 4. Compilation (`src/compile_pdfs.py`)
+### 5. Compilation (`src/compile_pdfs.py`)
 *   **Action:** Iterates through generated folders in `data/applications/`.
-*   **Logic:** Runs `pdflatex` or `lualatex` to turn `.tex` source files into professional PDFs.
+*   **Logic:** Runs `pdflatex` to transform `.tex` source files into professional PDFs.
 
 ---
 
-### 📂 File Structure
+## 📂 Project Structure
 
 ```text
 JobApplicator/
 ├── config/
-│   ├── keywords.yaml
-│   ├── targets.yaml
-│   └── targets_old.yaml
+│   ├── targets.yaml          # List of company URLs to scrape
+│   └── candidate_profile.py  # Your skills, experience, and bio
 │
 ├── data/
-│   ├── applications/
-│   │   ├── ea_Software_Engineer_-_Master_Thesis/
-│   │   ├── fatsharkgames_Procedural_Technical_Artist/
-│   │   ├── goodbyekansas_Expression_of_Interest.../
-│   │   ├── paradoxplaza_Backend_JavaScript_Developer/
-│   │   ├── paradoxplaza_Game_Programmer/
-│   │   └── ... (other generated job folders)
+│   ├── applications/         # Generated PDF folders
 │   ├── db/
-│   │   └── jobs.db
-│   ├── logs/
-│   ├── raw_jobs/
-│   │   ├── ea__Development_Director...html
-│   │   ├── fatsharkgames__Game_Designer...html
-│   │   └── ... (other saved HTML files)
+│   │   └── jobs.db           # SQLite Database
+│   ├── raw_jobs/             # Cached HTML files for debugging
 │   └── templates/
-│       ├── cover.jinja
-│       ├── cover.tex
-│       ├── resume.jinja
-│       └── resume.tex
+│       ├── cover.jinja       # LaTeX Cover Letter Template
+│       └── resume.jinja      # LaTeX Resume Template
 │
 ├── src/
-│   ├── latex/
-│   ├── normalizers/
-│   ├── redactor/
-│   ├── scoring/
 │   ├── scrapers/
-│   │   ├── parsers/
-│   │   │   ├── ashby.py
-│   │   │   ├── greenhouse.py
-│   │   │   ├── lever.py
-│   │   │   ├── simple.py
-│   │   │   └── teamtailor.py
-│   │   └── __init__.py
+│   │   ├── dispatcher.py     # Detects ATS (Greenhouse/Lever/etc)
+│   │   └── unified_parser.py # Centralized parsing logic
 │   ├── utils/
-│   ├── compile_pdfs.py
-│   ├── filter_jobs.py
-│   ├── generate_application.py
-│   ├── reset_db.py
-│   ├── run_scraper.py
-│   └── scrape_details.py
+│   ├── compile_pdfs.py       # PDF Compiler
+│   ├── generate_application.py # AI Generation Logic
+│   ├── run_scraper.py        # Main entry point for discovery
+│   └── scrape_details.py     # Content fetcher
 │
-├── job_sites.json
-├── main.py
-├── README.md
+├── main.py                   # Orchestrator
 ├── requirements.txt
-└── setup.sh
+└── README.md
 ```
 
-### Key Features Implemented
-1.  **LaTeX-Safe Templating:** We solved the conflict between Jinja `{{ }}` and LaTeX `{ }` by switching to `<< >>` and using `-%>` for strict whitespace control.
-2.  **Robust Escaping:** A dedicated regex function escapes special LaTeX characters (`&`, `_`, `%`, `$`) so the compiler never crashes on company names or code snippets.
-3.  **Strict JSON Enforcement:** The AI is forced to return pure JSON, which is then cleaned and parsed safely.
-4.  **Formatting Polish:**
-    *   **First-person enforcement:** "I am..." instead of "Name is..."
-    *   **Clean layouts:** No "Lonely \item" errors.
-    *   **Cover Letter formatting:** Proper paragraph breaks (double newlines) and removal of duplicate "Dear Manager" greetings.
+---
 
-I offer you a **fully autonomous job hunting factory**. Good luck! 
+## 🚀 How to Run
+
+### 1. Setup
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Playwright browsers
+playwright install chromium
+```
+
+### 2. Run the Pipeline
+
+**Step 1: Find Jobs**
+Scrapes target websites and populates the database.
+```bash
+python src/run_scraper.py
+```
+
+**Step 2: Get Details**
+Fetches the full description for found jobs.
+```bash
+python src/scrape_details.py
+```
+
+**Step 3: Approve Jobs**
+*Open `data/db/jobs.db` using a SQLite viewer and change the `status` column of desired jobs to **'approved'**.*
+
+**Step 4: Generate PDFs**
+Uses AI to write the content and creates the folder structure.
+```bash
+python src/generate_application.py
+```
+
+**Step 5: Compile**
+Turns the generated `.tex` files into PDFs.
+```bash
+python src/compile_pdfs.py
+```
+
+---
+
+## ✨ Key Features
+*   **Unified ATS Parsing:** A single module handles Ashby, Greenhouse, Lever, Teamtailor, Workday, and more.
+*   **Resilient Templating:** Solved the conflict between Jinja `{{ }}` and LaTeX `{ }` by using custom `<< >>` delimiters.
+*   **Strict JSON Enforcement:** Forces the LLM to return valid structured data, ensuring reliable resume generation.
+*   **Formatting Polish:** Automatically handles bullet point cleanup, first-person enforcement, and paragraph spacing.
