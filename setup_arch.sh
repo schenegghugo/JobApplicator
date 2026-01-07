@@ -2,8 +2,8 @@
 set -e
 
 echo "======================================================"
-echo " ATS Job Automation – Setup Script (Arch Linux Edition)"
-echo " Strategy: Direct-to-Source (Teamtailor / ATS)"
+echo " JobApplicator – Setup Script (Arch Linux Edition)"
+echo " Strategy: Unified Parser / Local LLM / LaTeX"
 echo "======================================================"
 
 # -----------------------------
@@ -25,6 +25,8 @@ command -v python >/dev/null 2>&1 || {
 echo "📦 Installing system dependencies via pacman..."
 
 # Arch specific package mapping
+# - texlive-basic/latexextra: For compiling the CVs
+# - poppler: For converting/handling PDF data if needed
 sudo pacman -Syu --needed --noconfirm \
   base-devel \
   git \
@@ -36,7 +38,6 @@ sudo pacman -Syu --needed --noconfirm \
   python-pip \
   texlive-basic \
   texlive-latexextra \
-  texlive-xetex \
   texlive-fontsrecommended
 
 echo "✅ System dependencies installed"
@@ -46,25 +47,27 @@ echo "✅ System dependencies installed"
 # -----------------------------
 echo "📁 Creating project structure..."
 
+# The New Architecture
 mkdir -p \
-  src/{scrapers/parsers,normalizers,scoring,latex,redactor,utils} \
-  data/{raw_jobs,db} \
-  resumes/{canonical,variants} \
-  cover_letters/{templates,generated} \
-  templates/latex \
+  src/{scrapers,utils} \
+  data/{applications,db,raw_jobs,templates} \
   config \
-  logs \
-  scripts \
-  tests
+  logs
 
-# Creating init files and the parser placeholders including the new Teamtailor one
+# Creating empty python modules
 touch \
   src/__init__.py \
   src/scrapers/__init__.py \
-  src/scrapers/parsers/__init__.py \
-  src/scrapers/parsers/{greenhouse.py,lever.py,ashby.py,teamtailor.py} \
-  src/redactor/__init__.py \
   src/utils/__init__.py
+
+# Create the core script placeholders
+touch \
+  src/run_scraper.py \
+  src/scrape_details.py \
+  src/generate_application.py \
+  src/compile_pdfs.py \
+  src/scrapers/dispatcher.py \
+  src/scrapers/unified_parser.py
 
 echo "✅ Project folders created"
 
@@ -83,6 +86,8 @@ pip install --upgrade pip wheel setuptools
 # -----------------------------
 echo "📚 Installing Python dependencies..."
 
+# We removed spaCy/langdetect (using Ollama now)
+# Added rich (for UI) and PyYAML/Jinja2 (for config/templating)
 pip install \
   requests \
   beautifulsoup4 \
@@ -90,50 +95,28 @@ pip install \
   playwright \
   pyyaml \
   jinja2 \
-  python-dotenv \
-  sqlalchemy \
   rich \
-  tqdm \
-  spacy \
-  pydantic \
-  langdetect \
-  regex \
-  click
+  pydantic
 
 echo "📥 Installing Playwright Chromium..."
 playwright install chromium
 
 # -----------------------------
-# 5. spaCy language model
-# -----------------------------
-echo "🧠 Installing spaCy language model..."
-python -m spacy download en_core_web_sm
-
-# -----------------------------
-# 6. Environment variables
+# 5. Environment variables
 # -----------------------------
 echo "🔐 Creating .env template..."
 
 cat <<EOF > .env
 # ============================================
-# ATS Job Automation – Environment
+# JobApplicator – Environment
 # ============================================
-
 PROJECT_ENV=development
 LOG_LEVEL=INFO
-
-# Scraping behavior
-SCRAPE_INTERVAL_HOURS=6
-# Generic User Agent to avoid Cloudflare blocks
-USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
-
-# Paths
 DATABASE_PATH=data/db/jobs.db
-LOG_PATH=logs/
 EOF
 
 # -----------------------------
-# 7. Git hygiene
+# 6. Git hygiene
 # -----------------------------
 echo "🧹 Creating .gitignore..."
 
@@ -143,34 +126,28 @@ cat <<EOF > .gitignore
 __pycache__/
 *.pyc
 
-# Environment
-.env
-
-# Data & logs
-data/
+# Data (Don't commit personal data or large crawls)
+data/db/*.db
+data/raw_jobs/*.html
+data/applications/
 logs/
 
-# PDFs
-*.pdf
-
-# Playwright
-.playwright/
-
-# OS
+# Env
+.env
 .DS_Store
 EOF
 
 # -----------------------------
-# 8. Core configuration
+# 7. Core configuration
 # -----------------------------
 echo "⚙️ Creating configuration files..."
 
+# targets.yaml - The list of URLS to scrape
 cat <<EOF > config/targets.yaml
 # ============================================
 # ATS Targets (Nordic / Game Dev Focus)
 # ============================================
-
-teamtailor:
+game_studios:
   - https://career.paradoxplaza.com/jobs
   - https://careers.avalanchestudios.com/jobs
   - https://career.embark-studios.com/jobs
@@ -179,94 +156,75 @@ teamtailor:
   - https://jobs.stunlock.com/jobs
   - https://jobs.frictionalgames.com/jobs
   - https://jobs.coffeestain.se/jobs
-  - https://jobs.tarsier.se/jobs
   - https://jobs.starbreeze.com/jobs
   - https://jobs.arrowheadgamestudios.com/jobs
   - https://career.snowprintstudios.com/jobs
   - https://jobs.neongiant.se/jobs
-  - https://jobs.mightanddelight.com/jobs
   - https://career.goodbyekansas.com/jobs
-  - https://career.chimneygroup.com/jobs
 
-custom:
-  # Add custom parsers later for these
-  # - https://www.ea.com/careers
-  # - https://careers.king.com/
-
-roles:
-  include:
-    - Engineer
-    - Developer
-    - Programmer
-    - Technical Artist
-  soft_exclude:
-    - Manager
-    - Director
-    - Lead
-    - Intern
+tech:
+  - https://jobs.spotify.com/jobs
+  - https://job-boards.greenhouse.io/klarna
 EOF
 
-cat <<EOF > config/keywords.yaml
-skills:
-  graphics:
-    - Vulkan
-    - OpenGL
-    - DirectX
-    - HLSL
-    - GLSL
-    - Rendering
-    - Shaders
-  engine:
-    - Unreal
-    - Unity
-    - Godot
-    - C++
-  general:
-    - Python
-    - Git
-    - CI/CD
-    - Docker
+# candidate_profile.py - Your personal data for the LLM
+cat <<EOF > config/candidate_profile.py
+# Your personal details for the AI to use
+profile = {
+    "name": "Hugo Developer",
+    "email": "hugo@example.com",
+    "phone": "+46 70 123 45 67",
+    "linkedin": "linkedin.com/in/hugo",
+    "location": "Stockholm, Sweden",
+    "bio": "Senior C++ Engine Programmer with 5 years of experience in Unreal Engine and low-level graphics optimization.",
+    "skills": ["C++", "Python", "Vulkan", "DirectX", "Unreal Engine 5", "Multithreading"],
+    "experience": [
+        "Senior Programmer at GameCorp (2020-Present): Optimized render pipeline.",
+        "Junior Dev at IndieStudio (2018-2020): Ported game to Switch."
+    ]
+}
 EOF
 
 # -----------------------------
-# 9. Canonical resume schema
+# 8. Templates (LaTeX + Jinja)
 # -----------------------------
-echo "📄 Creating canonical resume template..."
+echo "📄 Creating LaTeX templates..."
 
-cat <<EOF > resumes/canonical/resume.yaml
-personal:
-  name: "Hugo Developer"
-  title: "Game Engine Programmer"
-  email: "hugo@example.com"
-  location: "Stockholm, Sweden"
-  linkedin: "linkedin.com/in/hugo"
-  nationality: "EU Citizen"
+# resume.jinja - Note the << >> syntax for Jinja to avoid LaTeX conflicts
+cat <<EOF > data/templates/resume.jinja
+\documentclass[11pt,a4paper,sans]{moderncv}
+\moderncvstyle{banking}
+\moderncvcolor{black}
+\usepackage[utf8]{inputenc}
+\usepackage[scale=0.75]{geometry}
 
-summary: >
-  Experienced Engine Programmer...
+\name{<< name >>}{}
+\title{<< title >>}
+\address{<< location >>}
+\phone[mobile]{<< phone >>}
+\email{<< email >>}
 
-skills:
-  - category: Graphics
-    items: []
-  - category: Engine
-    items: []
+\begin{document}
+\makecvtitle
 
-experience:
-  - company: ""
-    role: ""
-    start: ""
-    end: ""
-    bullets:
-      - ""
+\section{Summary}
+<< summary >>
 
-education:
-  - degree: ""
-    institution: ""
-    year: ""
+\section{Experience}
+\begin{itemize}
+% for bullet in experience_bullets
+    \item << bullet >>
+% endfor
+\end{itemize}
+
+\section{Skills}
+<< skills_list >>
+
+\end{document}
 EOF
 
 # -----------------------------
-# 10. Database bootstrap
+# 9. Database bootstrap
 # -----------------------------
 echo "🗄️ Initializing SQLite database..."
 
@@ -279,25 +237,26 @@ CREATE TABLE IF NOT EXISTS jobs (
   location TEXT,
   apply_url TEXT,
   description TEXT,
-  language TEXT,
-  date_scraped DATETIME DEFAULT CURRENT_TIMESTAMP,
-  status TEXT DEFAULT 'new'
+  status TEXT DEFAULT 'new', -- new, approved, applied, ignored
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 EOF
 
 # -----------------------------
-# 11. Sanity checks
+# 10. Sanity checks
 # -----------------------------
 echo "🔍 Running sanity checks..."
 
 python - <<EOF
-import spacy, langdetect, pydantic, jinja2
-print("Python deps OK")
+import yaml, jinja2, rich, playwright
+print("✅ Python dependencies loaded successfully.")
 EOF
 
-# Check for xelatex specifically as it handles fonts better than pdflatex
-xelatex --version >/dev/null && echo "XeLaTeX OK"
+# Check for pdflatex
+pdflatex --version >/dev/null && echo "✅ pdfLaTeX detected." || echo "⚠️ pdfLaTeX not found. You need it to compile PDFs."
 
 echo "======================================================"
-echo "✅ ATS Job Automation setup COMPLETE (Arch Version)"
+echo "✨ JobApplicator Setup Complete!"
+echo "   1. Activate venv: source .venv/bin/activate"
+echo "   2. Scrape jobs:   python src/run_scraper.py"
 echo "======================================================"
