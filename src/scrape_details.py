@@ -1,14 +1,18 @@
 import sqlite3
 import os
 import re
+import argparse
+import sys
 from rich.console import Console
 from rich.progress import track
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from bs4 import BeautifulSoup
 
+# Ensure imports work from project root
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from src.utils.paths import get_profile_paths, ensure_dirs
+
 console = Console()
-DB_PATH = "data/db/jobs.db"
-RAW_DIR = "data/raw_jobs"
 
 def sanitize_filename(text):
     """
@@ -23,34 +27,45 @@ def sanitize_filename(text):
     clean = re.sub(r'_+', '_', clean)
     return clean.strip('_')
 
-def get_new_jobs():
-    conn = sqlite3.connect(DB_PATH)
+def get_new_jobs(db_path):
+    if not os.path.exists(db_path):
+        return []
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+    # Check for jobs that are new OR failed previously (optional logic)
     cursor.execute("SELECT * FROM jobs WHERE description IS NULL AND status != 'ignored'")
     jobs = cursor.fetchall()
     conn.close()
     return jobs
 
-def update_job_description(job_id, description, raw_path):
-    conn = sqlite3.connect(DB_PATH)
+def update_job_description(db_path, job_id, description, raw_path):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE jobs 
         SET description = ?, status = 'scraped', apply_url = ? 
         WHERE id = ?
-    """, (description, raw_path, job_id)) # Note: Storing path helps debug, though URL is standard
+    """, (description, raw_path, job_id)) 
     conn.commit()
     conn.close()
 
-def run():
-    jobs = get_new_jobs()
+def run(profile_name):
+    # 1. Resolve Profile Paths
+    paths = get_profile_paths(profile_name)
+    ensure_dirs(paths)
+    
+    db_path = paths["db_file"]
+    raw_dir = paths["raw_html_dir"]
+
+    # 2. Get Jobs
+    jobs = get_new_jobs(db_path)
     if not jobs:
-        console.print("[yellow]No pending jobs to scrape details for.[/yellow]")
+        console.print(f"[yellow]No pending jobs to scrape details for profile: {profile_name}[/yellow]")
         return
 
-    console.print(f"[bold cyan]🚀 Fetching details for {len(jobs)} jobs...[/bold cyan]")
-    console.print(f"[dim]Network Timeout set to 45s for roaming connection[/dim]")
+    console.print(f"[bold cyan]🚀 Fetching details for {len(jobs)} jobs ([white]{profile_name}[/white])...[/bold cyan]")
+    console.print(f"[dim]   📂 Saving Raw HTML to: {raw_dir}[/dim]")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -70,20 +85,20 @@ def run():
                     soup = BeautifulSoup(html, 'lxml')
                     text_content = soup.get_text(separator='\n', strip=True)
                     
-                    # --- NEW FILENAME LOGIC ---
+                    # --- FILENAME LOGIC ---
                     clean_company = sanitize_filename(job['company'])
                     clean_title = sanitize_filename(job['title'])
                     clean_loc = sanitize_filename(job['location'])
-                    # We keep the hash at the end to prevent overwriting if two jobs have same name
                     short_id = job['id'][:6] 
                     
                     filename = f"{clean_company}__{clean_title}__{clean_loc}__{short_id}.html"
-                    filepath = os.path.join(RAW_DIR, filename)
+                    # Save to Profile-Specific Raw Directory
+                    filepath = os.path.join(raw_dir, filename)
                     
                     with open(filepath, 'w', encoding='utf-8') as f:
                         f.write(html)
                     
-                    update_job_description(job['id'], text_content, filepath)
+                    update_job_description(db_path, job['id'], text_content, filepath)
                     break
                     
                 except PlaywrightTimeout:
@@ -100,4 +115,8 @@ def run():
     console.print("[bold green]✨ Detailed scrape complete![/bold green]")
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", type=str, required=True, help="Profile name (e.g., hugo, simon)")
+    args = parser.parse_args()
+    
+    run(args.profile)

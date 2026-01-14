@@ -1,0 +1,167 @@
+# config/profiles/simon/strategy.yaml
+
+settings:
+  auto_detect_language: true
+  fallback_language: "French" # Default to French given his location
+
+# ---------------------------------------------------------
+# JOB FILTERING — KEYWORDS
+# ---------------------------------------------------------
+job_filtering:
+
+  positive_keywords:
+    # Seniority & contract
+    - cadre
+    - cdi
+    - confirmé
+    - expérimenté
+    - autonome
+    - responsabilité
+    - pilotage
+    - coordination
+
+    # Roles aligned with Simon
+    - conducteur de travaux
+    - chef de projet
+    - project manager
+    - chargé d'affaires
+    - consultant
+    - pmo
+    - site manager
+    - works supervisor
+
+    # Domains
+    - télécom
+    - telecom
+    - fibre
+    - ftth
+    - infrastructures
+    - réseaux
+    - déploiement
+    - rollout
+    - génie civil
+    - construction
+    - travaux publics
+
+    # Skills & responsibilities
+    - gestion de projet
+    - planification
+    - suivi de chantier
+    - coordination sous-traitants
+    - hse
+    - sécurité
+    - qualité
+    - budget
+    - délais
+    - reporting
+    - kpi
+    - amélioration continue
+
+  negative_keywords:
+    # Seniority mismatch
+    - stage
+    - stagiaire
+    - intern
+    - alternance
+    - alternant
+    - junior
+    - débutant
+    - graduate
+    - trainee
+
+    # Roles outside target
+    - développeur
+    - developer
+    - ingénieur logiciel
+    - software
+    - data scientist
+    - data analyst
+    - devops
+    - architecte logiciel
+    - qa
+    - testeur
+
+    # Over-senior / non-relevant management
+    - directeur
+    - directrice
+    - head of
+    - vp
+    - vice president
+    - chief
+    - cto
+    - ceo
+
+    # Non-field / non-project roles
+    - commercial pur
+    - sales
+    - business developer
+    - marketing
+    - communication
+    - rh
+    - ressources humaines
+    - recruteur
+
+# ---------------------------------------------------------
+# CONTEXTUAL CONTENT INJECTION (existing)
+# ---------------------------------------------------------
+hooks:
+  # ---------------------------------------------------------
+  # SCENARIO A: The "Site Manager" (Conducteur de travaux) Job
+  # ---------------------------------------------------------
+  - name: "Field & Safety Emphasis"
+    triggers: 
+      - "chantier"
+      - "terrain"
+      - "sécurité"
+      - "hse"
+      - "travaux"
+      - "conducteur"
+    inject_into: "bio"
+    content: >
+      Habitué aux environnements exigeants, j'apporte une vigilance constante 
+      sur la sécurité (HSE) et une capacité à fédérer les équipes sous-traitantes 
+      pour tenir les délais.
+
+  - name: "Telecom Specifics"
+    triggers: 
+      - "fibre"
+      - "ftth"
+      - "télécom"
+      - "orange"
+      - "sfr"
+    inject_into: "skills"
+    content: "Expertise spécifique dans le déploiement de réseaux (FTTH/Infrastructures) acquise chez Circet."
+
+  # ---------------------------------------------------------
+  # SCENARIO B: The "Consultant / Project Manager" Job
+  # ---------------------------------------------------------
+  - name: "Methodology & Strategy"
+    triggers: 
+      - "consultant"
+      - "pmo"
+      - "process"
+      - "analyse"
+      - "stratégie"
+    inject_into: "bio"
+    content: >
+      Fort de mon cursus à l'IAE Bordeaux, je structure mes projets avec une méthodologie 
+      rigoureuse (suivi KPI, gestion des risques) pour transformer les besoins clients 
+      en résultats mesurables.
+
+  # ---------------------------------------------------------
+  # GEOGRAPHY: The "Bordeaux / Talence" Factor
+  # ---------------------------------------------------------
+  - name: "Local Roots"
+    triggers: ["bordeaux", "talence", "gironde", "33"]
+    inject_into: "cover_letter"
+    content: >
+      Basé à Talence et disposant d'un ancrage local fort en Gironde, 
+      je suis disponible immédiatement pour des projets sur la région.
+
+  - name: "Mobility (If job is NOT in Bordeaux)"
+    triggers: ["paris", "toulouse", "national", "déplacement"]
+    inject_into: "cover_letter"
+    content: >
+      Bien que basé en Nouvelle-Aquitaine, ma fonction de consultant m'a habitué 
+      à la mobilité et je suis prêt à me déplacer selon les besoins du projet.
+

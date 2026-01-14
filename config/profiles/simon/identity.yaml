@@ -1,0 +1,62 @@
+basics:
+  name: "Simon Georgin"
+  label: "Conducteur de Travaux & Consultant Projet"
+  email: "simon.georgin@email.com"
+  phone: "+33 6 00 00 00 00"
+  location: "Talence, Nouvelle-Aquitaine"
+  linkedin: "linkedin.com/in/simongeorgin"
+  languages:
+    - "Français (Natif)"
+    - "Anglais (Professionnel)"
+
+# Context for the AI
+bio_base: >
+  Professionnel polyvalent avec une double expertise en pilotage de travaux (Circet) 
+  et en conseil opérationnel (Reisel). Diplômé de l'IAE Bordeaux, je combine 
+  rigueur terrain et vision stratégique pour mener à bien des projets d'infrastructure 
+  et d'optimisation.
+
+experience:
+  - role: "Conducteur de Travaux (Site Manager)"
+    company: "Circet"
+    location: "France"
+    dates: "2023 - Présent"
+    bullets:
+      - "Pilotage complet de chantiers d'infrastructures télécoms (déploiement Fibre/Réseaux)."
+      - "Coordination et management des équipes sous-traitantes et internes."
+      - "Gestion financière : suivi des budgets et rentabilité des opérations."
+      - "Garant du respect des normes HSE et de la qualité livrable."
+
+  - role: "Consultant"
+    company: "Reisel"
+    location: "France"
+    dates: "2022 - Présent"
+    bullets:
+      - "Accompagnement client sur l'analyse de processus et l'organisation industrielle."
+      - "Gestion de projet : planification, identification des risques et suivi des KPI."
+      - "Facilitation et coordination entre les différentes parties prenantes."
+
+# ADDED: To match Hugo's "Key Development Projects" section
+projects:
+  - name: "Déploiement Fibre Optique (Dordogne)"
+    role: "Chef de Projet Terrain"
+    dates: "2023"
+    description: "Supervision du déploiement FTTH sur 3 communes, gestion de 15 sous-traitants."
+  
+  - name: "Optimisation Process Industriel"
+    role: "Consultant Junior"
+    dates: "2022"
+    description: "Audit et réorganisation des flux logistiques pour un client aéronautique (-15% de délais)."
+
+education:
+  - degree: "Master Management & Administration des Entreprises"
+    institution: "IAE Bordeaux"
+    year: "2022"
+    notes: "Focus sur la gestion de projet, la finance et la stratégie d'entreprise."
+
+# ADDED: To match Hugo's "Attributes" footer
+attributes:
+  - "Leadership de terrain"
+  - "Gestion de crise"
+  - "Communication transverse"
+  - "Autonomie"

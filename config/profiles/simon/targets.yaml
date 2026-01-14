@@ -1,0 +1,80 @@
+targets:
+  # ---------------------------------------------------------
+  # Telecom & Infrastructure Companies (France / EU)
+  # ---------------------------------------------------------
+  - https://www.circet.fr/offres-demploi
+  - https://orange.jobs/fr
+  - https://recrutement.sfr.com/
+  - https://bouyguestelecom-recrute.talent-soft.com/
+  - https://www.free.fr/free-recrute/   # Free / Iliad group careers
+  - https://www.axione.com/rejoignez-nous/postuler/
+  - https://tdf-recrute.tdf.fr/
+  - https://www.nokia.com/about-us/careers/
+  - https://www.ericsson.com/en/careers
+  - https://jobs.al-enterprise.com/      # Alcatel-Lucent Enterprise
+
+  # ---------------------------------------------------------
+  # Construction & Engineering Groups
+  # ---------------------------------------------------------
+  - https://jobs.vinci.com/
+  - https://www.bouygues.com/recrutement/
+  - https://jobs.eiffage.com/
+  - https://www.colas.com/fr/rejoignez-nous
+  - https://www.join.spie-job.com/
+  - https://jobs.vinci.com/fr/sogea-satom
+  - https://jobs.egis-group.com/fr
+  - https://www.setec.fr/recrutement/
+
+  # ---------------------------------------------------------
+  # Consulting & Engineering Services
+  # ---------------------------------------------------------
+  - https://www.reisel.fr/carrieres/
+  - https://www.alten.fr/carrieres/
+  - https://www.capgemini.com/fr-fr/carrieres/
+  - https://www.accenture.com/fr-fr/careers
+  - https://jobs.soprasteria.com/
+  - https://www.capgemini.com/fr-fr/carrieres/capgemini-engineering/  # ex-Altran
+
+  # ---------------------------------------------------------
+  # Public Infrastructure / Utilities
+  # ---------------------------------------------------------
+  - https://www.sncf.com/fr/recrutement
+  - https://www.rte-france.com/carrieres
+  - https://www.enedis.fr/recrutement
+  - https://www.grdf.fr/recrutement
+
+custom:
+  # Add custom parsers later if needed
+  # - https://www.apec.fr/
+  # - https://www.hellowork.com/
+  # - https://www.welcometothejungle.com/
+
+roles:
+  include:
+    - Conducteur de travaux
+    - Chef de projet
+    - Project Manager
+    - Chargé d'affaires
+    - Consultant
+    - PMO
+    - Operations
+    - Site Manager
+    - Works Supervisor
+    - Infrastructure
+    - Telecom
+    - Réseaux
+    - Déploiement
+    - Deployment
+    - Rollout
+    - Coordination
+  soft_exclude:
+    - Director
+    - Head of
+    - VP
+    - Vice President
+    - Lead
+    - Intern
+    - Apprentice
+    - Stagiaire
+    - Alternant
+

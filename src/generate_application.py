@@ -1,10 +1,19 @@
+import sys
 import sqlite3
 import os
 import requests
 import json
 import re
+import argparse
+import copy
 from rich.console import Console
 from jinja2 import Environment, FileSystemLoader
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from src.logic.loader import load_profile
+from src.logic.hooks import process_hooks
+from src.utils.paths import get_profile_paths
 
 console = Console()
 
@@ -12,62 +21,43 @@ console = Console()
 # CONFIGURATION
 # -----------------------------------------------------------------------------
 
-DB_PATH = "data/db/jobs.db"
+OUTPUT_DIR = "data/applications" 
 TEMPLATE_DIR = "data/templates"
-OUTPUT_DIR = "data/applications"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "llama3.2"
-TIMEOUT_SECONDS = 200
+TIMEOUT_SECONDS = 1200 
+
+UI_TRANSLATIONS = {
+    "en": { 
+        "h_profile": "Summary", 
+        "h_experience": "Experience", 
+        "h_education": "Education", 
+        "h_skills": "Technical Skills",
+        "h_projects": "Key Projects",
+        "h_attributes": "Attributes",
+        "cl_opening": "Dear Hiring Manager,",
+        "cl_closing": "Sincerely,"
+    },
+    "fr": { 
+        "h_profile": "Résumé", 
+        "h_experience": "Expérience Professionnelle", 
+        "h_education": "Formation", 
+        "h_skills": "Compétences Techniques",
+        "h_projects": "Projets Clés",
+        "h_attributes": "Savoir-être",
+        "cl_opening": "Madame, Monsieur,",
+        "cl_closing": "Cordialement,"
+    }
+}
 
 # -----------------------------------------------------------------------------
-# CANDIDATE PROFILE
-# -----------------------------------------------------------------------------
-
-CANDIDATE_PROFILE = """
-Name: Hugo Schenegg
-Location: Paris, France
-Nationality: French
-Languages: French (Native), English (Fluent)
-Links: github.com/schenegghugo
-
-Education:
-- CGI Filmmaker (M.A. equivalent), Supinfocom Arles (2021)
-
-Professional Experience:
-- Studio Coordinator, MPC Paris (Jan 2022 – Present)
-  - Outsourced solutions and vendor coordination
-  - Python automation of production workflows
-  - Data modeling and reporting (Power BI)
-  - Payroll, invoice tracking, resource monitoring
-  - Production activity control
-  - Pipeline integration support (Meshroom)
-  - Liaison between artists and technical teams
-  - UNIX/Linux operational knowledge
-
-Technical Skills:
-- Python (automation, pipeline tools)
-- C++ (graphics foundations)
-- OpenGL, Vulkan (personal projects)
-- UNIX/Linux, Windows
-- Git
-- Maya
-- Data workflows and reconciliation
-"""
-
-# -----------------------------------------------------------------------------
-# HELPER FUNCTIONS
+# HELPERS
 # -----------------------------------------------------------------------------
 
 def call_ollama_json(prompt):
     data = {
-        "model": MODEL_NAME,
-        "prompt": prompt,
-        "format": "json",
-        "stream": False,
-        "options": {
-            "num_ctx": 4096,
-            "temperature": 0.2
-        }
+        "model": MODEL_NAME, "prompt": prompt, "format": "json", "stream": False,
+        "options": { "num_ctx": 4096, "temperature": 0.2 }
     }
     try:
         response = requests.post(OLLAMA_URL, json=data, timeout=TIMEOUT_SECONDS)
@@ -81,259 +71,228 @@ def clean_json_string(json_str):
     if not json_str: return ""
     start = json_str.find('{')
     end = json_str.rfind('}')
-    if start != -1 and end != -1:
-        return json_str[start:end+1]
+    if start != -1 and end != -1: return json_str[start:end+1]
     return json_str
 
-def escape_tex(text):
-    """
-    Robustly escapes LaTeX special characters.
-    """
-    if not isinstance(text, str): return text
-    
-    chars = {
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-        "\\": r"\textbackslash{}",
+def escape_tex_string(text):
+    if not isinstance(text, str): return str(text)
+    chars = { 
+        "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_", 
+        "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}", 
+        "\\": r"\textbackslash{}"
     }
-    
     regex = re.compile('|'.join(re.escape(key) for key in chars.keys()))
     return regex.sub(lambda m: chars[m.group()], text)
 
-def check_if_sweden(job):
-    """Checks if the job is located in Sweden."""
-    text = (job['location'] + " " + job['description']).lower()
-    return any(x in text for x in ["sweden", "stockholm", "malmö", "malmo", "gothenburg"])
+def recursive_escape(data):
+    if isinstance(data, dict):
+        return {k: recursive_escape(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [recursive_escape(i) for i in data]
+    elif isinstance(data, str):
+        return escape_tex_string(data)
+    elif isinstance(data, (int, float, bool)):
+        return str(data)
+    elif data is None:
+        return ""
+    else:
+        return str(data)
 
-def check_if_france(job):
-    """Checks if the job is located in France."""
-    text = (job['location'] + " " + job['description']).lower()
-    # Check specifically for France locations
-    return any(x in text for x in ["france", "paris", "lyon", "bordeaux", "montpellier", "lille"])
+def to_dict(obj):
+    if hasattr(obj, 'model_dump'): return obj.model_dump()
+    if hasattr(obj, 'dict'): return obj.dict()
+    if isinstance(obj, dict): return obj
+    return obj
 
 # -----------------------------------------------------------------------------
-# MAIN LOGIC
+# MAIN
 # -----------------------------------------------------------------------------
 
-def run():
-    if not os.path.exists(TEMPLATE_DIR):
-        console.print(f"[red]❌ Template directory not found: {TEMPLATE_DIR}[/red]")
-        return
+def run(profile_name):
+    console.print(f"[bold blue]👤 Loading Profile: {profile_name}[/bold blue]")
     
-    # Use LaTeX-safe delimiters to avoid conflicts
+    paths = get_profile_paths(profile_name)
+    db_path = paths['db_file']
+    output_base_dir = os.path.join(OUTPUT_DIR, profile_name)
+
+    # Load Data
+    try:
+        raw_data = load_profile(profile_name)
+        if len(raw_data) == 2: identity_obj, strategy_obj = raw_data
+        elif len(raw_data) >= 3: identity_obj, strategy_obj = raw_data[0], raw_data[1]
+        else: raise ValueError("Invalid profile data")
+
+        identity = to_dict(identity_obj)
+        strategy_dict = to_dict(strategy_obj)
+        
+    except Exception as e:
+        console.print(f"[bold red]❌ Profile Load Error: {e}[/bold red]")
+        return
+
+    # Setup Jinja
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
-        block_start_string='<%',
-        block_end_string='%>',
-        variable_start_string='<<',
-        variable_end_string='>>',
-        comment_start_string='<#',
-        comment_end_string='#>'
+        block_start_string='<%', block_end_string='%>',
+        variable_start_string='<<', variable_end_string='>>',
+        comment_start_string='<#', comment_end_string='#>'
     )
-    
     try:
         resume_template = env.get_template("resume.jinja")
         cover_template = env.get_template("cover.jinja")
     except Exception as e:
-        console.print(f"[bold red]❌ Template Error: {e}[/bold red]")
+        console.print(f"[bold red]❌ Jinja Error: {e}[/bold red]")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    # DB Connection
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    
     cursor.execute("SELECT * FROM jobs WHERE status = 'approved'")
     jobs = cursor.fetchall()
     
     if not jobs:
-        console.print("[yellow]No approved jobs waiting.[/yellow]")
+        console.print(f"[yellow]⚠️ No approved jobs found.[/yellow]")
         return
 
+    console.print(f"[bold green]🚀 Found {len(jobs)} jobs.[/bold green]")
+
     for job in jobs:
-        console.print(f"\n[bold cyan]🤖 Processing: {job['company']} - {job['title']}[/bold cyan]")
+        console.print(f"\n[bold cyan]🤖 Processing: {job['company']}[/bold cyan]")
         
-        safe_title = re.sub(r'[^\w\-_]', '_', f"{job['company']}_{job['title']}")
-        folder_path = os.path.join(OUTPUT_DIR, safe_title)
+        safe_title = re.sub(r'[^\w\-_]', '_', f"{job['id']}_{job['company']}_{job['title']}")[:50]
+        folder_path = os.path.join(output_base_dir, safe_title)
         
-        resume_path = os.path.join(folder_path, "resume.tex")
-        cover_path = os.path.join(folder_path, "cover.tex")
+        # --- PREPARE BASE DATA ---
+        final_data = copy.deepcopy(identity)
+        if 'basics' in final_data:
+            final_data.update(final_data['basics'])
 
-        # --- LOCATION INTELLIGENCE ---
-        is_sweden = check_if_sweden(job)
-        is_france = check_if_france(job)
+        full_name = final_data.get('name', 'Candidate Name').split(" ")
+        final_data['first_name'] = full_name[0]
+        final_data['last_name'] = " ".join(full_name[1:]) if len(full_name) > 1 else ""
+        final_data['company_name'] = job['company']
         
-        # 1. Sweden Logic
-        sweden_instruction = ""
-        if is_sweden:
-            console.print("   🇸🇪 Sweden detected! Adding relocation logic.")
-            sweden_instruction = """
-            CRITICAL SWEDEN INSTRUCTION:
-            - This job is in Sweden. You MUST add a specific paragraph in the cover letter body.
-            - State clearly: "My main motivation for relocating to Scandinavia is to be closer to my spouse's family."
-            - Mention that I speak conversational Swedish.
-            """
-
-        # 2. France Logic (Language Switching)
-        if is_france:
-            console.print("   🇫🇷 France detected! Switching to French mode.")
-            language_context = "FRENCH"
-            language_instruction = "IMPORTANT: Write ALL content (Summary, Bullets, Cover Letter) in PROFESSIONAL FRENCH (Français)."
-            
-            # French UI Strings
-            ui_strings = {
-                "h_profile": "Profil",
-                "h_experience": "Expérience Professionnelle",
-                "h_education": "Formation",
-                "h_skills": "Compétences Techniques",
-                "h_projects": "Projets Personnels",
-                "h_current_role": "Coordinateur de Studio",
-                "cl_opening": "Madame, Monsieur,",
-                "cl_closing": "Cordialement,"
-            }
+        # FIX: Robust Language Extraction
+        langs = final_data.get('languages', [])
+        if langs:
+            clean_langs = []
+            for l in langs:
+                if isinstance(l, str): clean_langs.append(l)
+                elif isinstance(l, dict) and 'language' in l: clean_langs.append(l['language'])
+            final_data['languages_string'] = " -- ".join(clean_langs)
         else:
-            console.print("   🌍 International job. Writing in English.")
-            language_context = "ENGLISH"
-            language_instruction = "Write in ENGLISH."
+            final_data['languages_string'] = ""
 
-            # English UI Strings
-            ui_strings = {
-                "h_profile": "Profile",
-                "h_experience": "Experience",
-                "h_education": "Education",
-                "h_skills": "Technical Skills",
-                "h_projects": "Projects",
-                "h_current_role": "Studio Coordinator",
-                "cl_opening": "Dear Hiring Manager,",
-                "cl_closing": "Sincerely,"
-            }
+        # Experience Context
+        experiences = final_data.get('experience', [])
+        if experiences:
+            current_job = experiences[0] 
+            final_data['role_current'] = current_job.get('role', 'Role')
+            final_data['company_current'] = current_job.get('company', 'Company')
+            final_data['dates_current'] = current_job.get('dates', 'Present')
+            final_data['location_current'] = current_job.get('location', '')
+            final_data['experience_history'] = experiences[1:]
+        else:
+            final_data['role_current'] = "Professional"
+            final_data['company_current'] = ""
+            final_data['dates_current'] = ""
+            final_data['location_current'] = ""
+            final_data['experience_history'] = []
 
+        # --- LLM GENERATION ---
+        injections = process_hooks(job['description'], strategy_obj)
+        
+        target_lang = "en"
+        instruction = "Write in English."
+        if strategy_dict.get('settings', {}).get('auto_detect_language', True):
+            if any(w in job['description'].lower() for w in ["pour", "expérience", "cdi", "cdd"]):
+                target_lang = "fr"
+                instruction = "Write in FRENCH."
+
+        final_data.update(UI_TRANSLATIONS.get(target_lang, UI_TRANSLATIONS["en"]))
+
+        # PROMPT: Asking for Categorized Skills Dictionary
         prompt = f"""
-You are an expert career coach and technical writer.
-Analyze the JOB DESCRIPTION and CANDIDATE PROFILE below.
-Write a highly customized resume summary and cover letter.
+You are a career expert helping {final_data.get('name')}.
+CONTEXT: Target Language: {target_lang.upper()}. {instruction}
 
-CONTEXT: The target language is {language_context}.
+JOB: {job['description'][:2000]}
+PROFILE: {json.dumps(identity, ensure_ascii=False)}
+INJECTIONS: {json.dumps(injections, ensure_ascii=False)}
 
-JOB DESCRIPTION:
-{job['description'][:2500]}
+TASK: Generate JSON.
+1. "experience_bullets": 4 bullet points for the most recent role.
+2. "profile_summary": 2 lines first person summary.
+3. "skills_dict": A dictionary where keys are short categories (e.g. "Languages", "Technical", "Management") and values are comma-separated strings.
+4. "cover_letter_body": 3 paragraphs. NO GREETINGS. NO SIGN-OFF.
 
-CANDIDATE PROFILE:
-{CANDIDATE_PROFILE}
-
-INSTRUCTIONS:
-1. "job_title_target": Use the exact job title from the listing.
-2. "profile_summary": Write 2 strong sentences in the FIRST PERSON ("I am...", "Je suis..."). Do NOT use third person.
-   - {language_instruction}
-3. "mpc_bullets": Rewrite 4 specific bullet points from the candidate's MPC experience.
-   - {language_instruction}
-4. "skills_graphics": If the job mentions graphics/rendering, list "OpenGL, Vulkan, Rendering Pipelines". If not, list them anyway.
-5. "cover_letter_body": Write the BODY ONLY.
-   - Do NOT include "Dear Manager" / "Madame, Monsieur".
-   - Do NOT include "Sincerely" / "Cordialement".
-   - Paragraph 1: Enthusiastic intro.
-   - Paragraph 2: Connect Python/C++ skills to the requirements.
-   - Paragraph 3: Professional closing.
-   - USE DOUBLE NEWLINES (\\n\\n) between paragraphs.
-   - {language_instruction}
-   {sweden_instruction}
-
-OUTPUT FORMAT (Pure JSON only - Keys must be English, Values in {language_context}):
+OUTPUT JSON:
 {{
-  "company_name": "{job['company']}",
-  "job_title": "{job['title']}",
-  "job_title_target": "...",
+  "job_title_target": "Target Job Title",
   "profile_summary": "...",
-  "skills_scripting": "Python, C++, Bash",
-  "skills_software": "Maya, Linux, Git",
-  "skills_graphics": "OpenGL, Vulkan, Rendering Pipelines",
-  "mpc_bullets": [
-    "...",
-    "...",
-    "...",
-    "..."
-  ],
+  "skills_dict": {{ "Category1": "Skill A, Skill B", "Category2": "Skill C, Skill D" }},
+  "experience_bullets": ["...","..."],
   "cover_letter_body": "..."
 }}
 """
-        console.print("   ↳ 🧠 Generating structured data...")
+        console.print(f"   ↳ 🧠 Generating ({target_lang})...")
         raw_json = call_ollama_json(prompt)
         
-        if not raw_json: continue
+        if raw_json:
+            try:
+                llm_data = json.loads(clean_json_string(raw_json))
+                final_data.update(llm_data)
 
-        try:
-            clean_str = clean_json_string(raw_json)
-            data = json.loads(clean_str)
+                # 1. Clean Bullets
+                bullets = final_data.get("experience_bullets", [])
+                clean_bullets = []
+                if isinstance(bullets, list):
+                    for b in bullets:
+                        cb = re.sub(r"^[\-\*•]\s*", "", str(b)).strip().replace("\n", " ") 
+                        if cb: clean_bullets.append(cb)
+                if not clean_bullets: clean_bullets = ["Experience details available upon request."]
+                final_data["experience_bullets"] = clean_bullets
 
-            # --- DATA INJECTION ---
-            # Inject the language-specific UI headers into the data dictionary
-            data.update(ui_strings)
+                # 2. Clean Cover Letter
+                if "cover_letter_body" in final_data:
+                    body = final_data["cover_letter_body"]
+                    body = re.sub(r"(Dear|Sincerely|Cordialement|Best regards).*?,?", "", body, flags=re.IGNORECASE)
+                    body = re.sub(r'\n+', '\n\n', body.strip())
+                    if body.endswith(r"\\"): body = body[:-2].strip()
+                    final_data["cover_letter_body"] = body
 
-            # --- DATA CLEANUP & FALLBACKS ---
+                # 3. ESCAPING
+                cl_body = final_data.pop("cover_letter_body", "")
+                final_data = recursive_escape(final_data)
 
-            # 1. Force Graphics Skills if empty
-            if not data.get("skills_graphics") or len(data["skills_graphics"]) < 3:
-                data["skills_graphics"] = "OpenGL, Vulkan, Rendering Pipelines"
+                if cl_body:
+                    paragraphs = cl_body.split('\n\n')
+                    escaped_paragraphs = [escape_tex_string(p.strip()) for p in paragraphs if p.strip()]
+                    final_data["cover_letter_body"] = "\n\n".join(escaped_paragraphs)
+                else:
+                    final_data["cover_letter_body"] = ""
 
-            # 2. Fix Cover Letter Paragraphs & Remove Greeting/Signoff (Double Check)
-            if "cover_letter_body" in data:
-                body = data["cover_letter_body"]
-                
-                # Cleanup regex for both English AND French greetings
-                # "Dear Manager", "Chère Madame", "Monsieur", etc.
-                body = re.sub(r"(Dear|Chère|Cher).*?Manager,?", "", body, flags=re.IGNORECASE)
-                body = re.sub(r"(Madame|Monsieur),?", "", body, flags=re.IGNORECASE)
-                body = re.sub(r"(Sincerely|Cordialement|Bien à vous),?", "", body, flags=re.IGNORECASE)
-                body = re.sub(r"Hugo Schenegg", "", body, flags=re.IGNORECASE)
-                
-                # Ensure Double Newlines
-                if "\n\n" not in body:
-                    body = body.replace("\n", "\n\n")
-                
-                data["cover_letter_body"] = escape_tex(body.strip())
+                # Render
+                os.makedirs(folder_path, exist_ok=True)
+                with open(os.path.join(folder_path, "resume.tex"), "w") as f:
+                    f.write(resume_template.render(final_data))
+                with open(os.path.join(folder_path, "cover.tex"), "w") as f:
+                    f.write(cover_template.render(final_data))
 
-            # 3. Clean Bullets (Remove leading dashes)
-            if "mpc_bullets" in data and isinstance(data["mpc_bullets"], list):
-                cleaned_bullets = []
-                for b in data["mpc_bullets"]:
-                    # Remove leading "- " or "* "
-                    clean_b = re.sub(r"^[\-\*]\s*", "", b).strip()
-                    cleaned_bullets.append(clean_b)
-                data["mpc_bullets"] = cleaned_bullets
+                console.print(f"[green]   ✅ Generated in: {folder_path}[/green]")
+                cursor.execute("UPDATE jobs SET status = 'generated' WHERE id = ?", (job['id'],))
+                conn.commit()
 
-            # --- ESCAPING FOR LATEX ---
-            for key, value in data.items():
-                if key == "cover_letter_body": continue # Already handled
-                
-                if isinstance(value, str):
-                    data[key] = escape_tex(value)
-                elif isinstance(value, list):
-                    data[key] = [escape_tex(v).replace("\n", " ") for v in value]
-
-            # Render
-            resume_content = resume_template.render(data)
-            cover_content = cover_template.render(data)
-            
-            os.makedirs(folder_path, exist_ok=True)
-            with open(resume_path, "w") as f: f.write(resume_content)
-            with open(cover_path, "w") as f: f.write(cover_content)
-            
-            console.print(f"[green]   ✅ Generated LaTeX in: {folder_path}[/green]")
-            
-            cursor.execute("UPDATE jobs SET status = 'generated' WHERE id = ?", (job['id'],))
-            conn.commit()
-            
-        except Exception as e:
-            console.print(f"[red]   ❌ Processing Error: {e}[/red]")
-
+            except Exception as e:
+                console.print(f"[red]   ❌ Error processing JSON: {e}[/red]")
+        else:
+             console.print(f"[yellow]   ⚠️ Skipped due to Ollama timeout/error[/yellow]")
+        
     conn.close()
     console.print("\n[bold green]✨ Generation complete![/bold green]")
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", type=str, required=True)
+    args = parser.parse_args()
+    run(args.profile)
